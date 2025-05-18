@@ -4,26 +4,36 @@ from PIL import Image, ImageTk
 import sqlite3
 import re
 
+
 class RegistrationForm:
     def __init__(self, root):
         self.root = root
         self.root.attributes('-fullscreen', True)
         self.root.configure(bg="#E1E1F0")
-        self.output_path = Path(__file__).parent
-        self.assets_path = Path(r"C:\InvenTrack-main\InvenTrack\admin\assets\frame0")
 
+        # Paths
+        self.output_path = Path(__file__).parent
+        self.assets_path = self.output_path.parent / "build/assets/frame0"
+
+        # Flags for show/hide password
         self.password_visible = False
         self.confirm_password_visible = False
 
+        # Setup DB connection
         self.setup_database()
 
+        # Load icons
         self.show_image = self.load_resized_image("show.png", size=(40, 40))
         self.hide_image = self.load_resized_image("hide.png", size=(28, 23))
 
+        # Build UI
         self.build_ui()
 
     def setup_database(self):
-        db_path = self.output_path.parent.parent / "inventoryproject.db"
+        db_path = self.output_path.parent / "inventoryproject.db"
+        if not db_path.exists():
+            messagebox.showerror("Database Error", f"Database not found:\n{db_path}")
+            raise FileNotFoundError(f"Database not found: {db_path}")
         self.conn = sqlite3.connect(str(db_path))
         self.cursor = self.conn.cursor()
         self.cursor.execute('''
