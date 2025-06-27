@@ -13,7 +13,7 @@ class RegistrationForm:
 
         # Paths
         self.output_path = Path(__file__).parent
-        self.assets_path = self.output_path.parent / "build/assets/frame0"
+        self.assets_path = Path(r"C:\InvenTrack-main\InvenTrack\admin\assets\frame0")
 
         # Flags for show/hide password
         self.password_visible = False
@@ -68,7 +68,7 @@ class RegistrationForm:
         canvas.place(x=0, y=0)
         self.canvas = canvas
 
-        img_path = self.rel_asset("img.png")
+        img_path = self.rel_asset("background.png")
         bg_pil_image = Image.open(img_path).resize((1920, 1080), Image.Resampling.LANCZOS)
         self.bg_image = ImageTk.PhotoImage(bg_pil_image)
         canvas.create_image(0, 0, image=self.bg_image, anchor="nw")
@@ -141,7 +141,7 @@ class RegistrationForm:
         )
         self.toggle_confirm_password_btn.place(x=1060, y=814, height=30, width=30)
 
-        self.image_3 = PhotoImage(file=self.rel_asset("image_3.png"))
+        self.image_3 = PhotoImage(file=self.rel_asset("logo.png"))
         canvas.create_image(1445.0, 667.0, image=self.image_3)
 
         self.submit_img = PhotoImage(file=self.rel_asset("createButton.png"))
