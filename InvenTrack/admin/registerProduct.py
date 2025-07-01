@@ -89,7 +89,7 @@ class DatabaseManager:
                     UPDATE product SET status = 
                         CASE 
                             WHEN NEW.stockQuantity = 0 THEN 'Out of Stock'
-                            WHEN NEW.stockQuantity < 20 THEN 'Low Stock'
+                            WHEN NEW.stockQuantity < 5 THEN 'Low Stock'
                             ELSE 'In Stock'
                         END
                     WHERE productID = NEW.productID;
@@ -105,7 +105,7 @@ class DatabaseManager:
                     UPDATE product SET status = 
                         CASE 
                             WHEN NEW.stockQuantity = 0 THEN 'Out of Stock'
-                            WHEN NEW.stockQuantity < 20 THEN 'Low Stock'
+                            WHEN NEW.stockQuantity < 5 THEN 'Low Stock'
                             ELSE 'In Stock'
                         END
                     WHERE productID = NEW.productID;
@@ -271,7 +271,7 @@ class ProductRegistrationUI(ctk.CTk):
             # Determine status based on quantity
             if quantity == 0:
                 status = "Out of Stock"
-            elif quantity < 20:
+            elif quantity < 5:
                 status = "Low Stock"
             else:
                 status = "In Stock"
