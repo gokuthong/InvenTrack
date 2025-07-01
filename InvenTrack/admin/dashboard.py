@@ -90,7 +90,7 @@ class DatabaseManager:
                         UPDATE product SET status = 
                             CASE 
                                 WHEN NEW.stockQuantity = 0 THEN 'Out of Stock'
-                                WHEN NEW.stockQuantity < 20 THEN 'Low Stock'
+                                WHEN NEW.stockQuantity < 5 THEN 'Low Stock'
                                 ELSE 'In Stock'
                             END
                         WHERE productID = NEW.productID;
@@ -106,7 +106,7 @@ class DatabaseManager:
                         UPDATE product SET status = 
                             CASE 
                                 WHEN NEW.stockQuantity = 0 THEN 'Out of Stock'
-                                WHEN NEW.stockQuantity < 20 THEN 'Low Stock'
+                                WHEN NEW.stockQuantity < 5 THEN 'Low Stock'
                                 ELSE 'In Stock'
                             END
                         WHERE productID = NEW.productID;
@@ -529,7 +529,7 @@ class AdminDashboardUI(ctk.CTk):
                 cursor.execute("""
                     SELECT COUNT(*) 
                     FROM product 
-                    WHERE stockQuantity <= 10 OR status = 'Low Stock' OR status = 'Out of Stock'
+                    WHERE stockQuantity < 5 OR status = 'Low Stock' OR status = 'Out of Stock'
                 """)
                 low_stock_count = cursor.fetchone()[0] or 0
 
@@ -537,7 +537,7 @@ class AdminDashboardUI(ctk.CTk):
                 cursor.execute("""
                     SELECT productID, productName, category, stockQuantity, status 
                     FROM product 
-                    WHERE stockQuantity <= 10 OR status = 'Low Stock' OR status = 'Out of Stock'
+                    WHERE stockQuantity < 5 OR status = 'Low Stock' OR status = 'Out of Stock'
                     ORDER BY stockQuantity ASC
                     LIMIT 10
                 """)
@@ -559,9 +559,9 @@ class AdminDashboardUI(ctk.CTk):
                     product_id, product_name, category, stock, status = item
                     if stock <= 0:
                         status = "Out of Stock"
-                    elif stock <= 5:
+                    elif stock <= 1:
                         status = "Critical Stock"
-                    elif stock <= 10:
+                    elif stock <= 5:
                         status = "Low Stock"
 
                     # Create callback for restock button
@@ -614,7 +614,7 @@ class AdminDashboardUI(ctk.CTk):
                 cursor.execute("""
                     SELECT productID, productName, category, stockQuantity, status 
                     FROM product 
-                    WHERE stockQuantity <= 10 OR status = 'Low Stock' OR status = 'Out of Stock'
+                    WHERE stockQuantity < 5 OR status = 'Low Stock' OR status = 'Out of Stock'
                     ORDER BY stockQuantity ASC
                 """)
                 low_stock_items = cursor.fetchall()
