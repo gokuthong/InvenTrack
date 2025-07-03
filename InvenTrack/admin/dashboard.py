@@ -363,8 +363,8 @@ class AdminDashboardUI(ctk.CTk):
         self.sidebar_visible = True
         nav_cmds = {
             "Dashboard": lambda: None,
-            "Register Product": self.switch_to_registration,
-            "Manage Products": lambda: self.redirect_to_manage_product(),  # Updated to redirect
+            "Register Product": lambda: self.switch_to_registration,
+            "Manage Products": lambda: self.redirect_to_manage_product()
         }
 
         self.sidebar = Sidebar(self, nav_cmds, self.toggle_sidebar)
