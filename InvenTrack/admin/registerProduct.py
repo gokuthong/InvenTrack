@@ -7,6 +7,8 @@ from datetime import datetime
 import sqlite3
 import qrcode
 import io
+import logging
+import subprocess
 
 # Set appearance mode and color theme
 ctk.set_appearance_mode("System")
@@ -143,9 +145,9 @@ class ProductRegistrationUI(ctk.CTk):
         """Initialize all UI components"""
         self.sidebar_visible = True
         nav_cmds = {
-            "Dashboard": lambda: messagebox.showinfo("Dashboard", "Go to Dashboard"),
+            "Dashboard": lambda:self.switch_to_dashboard(),
             "Register Product": lambda: None,
-            "Manage Product Details": lambda: messagebox.showinfo("Manage Product Details", "Go to Product Management")
+            "Manage Products": lambda: self.switch_to_manage_product()
         }
 
         self.sidebar = Sidebar(self, nav_cmds, self.toggle_sidebar)
@@ -160,6 +162,58 @@ class ProductRegistrationUI(ctk.CTk):
 
         self.header = Header(self.main, "Product Registration", self.toggle_sidebar)
         self.build_registration_form()
+
+    def switch_to_dashboard(self):
+        """Switch to product registration page without confirmation popup"""
+        try:
+            # Close current window
+            self.destroy()
+
+            # Launch registration page
+            current_dir = Path(__file__).parent
+            dashboard_script = current_dir / "dashboard.py"
+
+            if dashboard_script.exists():
+                subprocess.Popen(['python', str(dashboard_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                app = ProductRegistrationUI()
+                app.mainloop()
+
+        except Exception as e:
+            logging.error(f"Error switching to dashboard: {e}")
+            messagebox.showerror("Navigation Error", "Failed to open dashboard page")
+            # Reopen dashboard if redirection fails
+            app = ProductRegistrationUI()
+            app.mainloop()
+
+    def switch_to_manage_product(self, product_id=None):
+        """Launch manageProduct.py in a new process"""
+        try:
+            current_dir = Path(__file__).parent
+            manage_script = current_dir / "manageProduct.py"
+
+            if not manage_script.exists():
+                messagebox.showerror("Error", "Product management module not found!")
+                return
+
+            # Close current window
+            self.destroy()
+
+            # Prepare command with product ID if available
+            command = ['python', str(manage_script)]
+            if product_id:
+                command.append(str(product_id))
+
+            # Launch new process
+            subprocess.Popen(command)
+
+        except Exception as e:
+            logging.error(f"Redirection failed: {e}")
+            messagebox.showerror("Navigation Error", "Could not launch product management")
+            # Reopen dashboard if redirection fails
+            app = ProductRegistrationUI()
+            app.mainloop()
 
     def build_registration_form(self):
         """Build the product registration form"""
