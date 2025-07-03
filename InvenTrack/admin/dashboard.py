@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox  # Keep this for standard message boxes
 from PIL import Image, ImageTk
 from pathlib import Path
 import sqlite3
@@ -18,6 +18,72 @@ logging.basicConfig(
     level=logging.ERROR,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+
+# CUSTOM MESSAGEBOX WITH LARGER SIZE (ONLY FOR RESTOCK CONFIRMATION)
+class CustomMessageBox(ctk.CTkToplevel):
+    def __init__(self, parent, title, message, buttons=("OK",), icon=None, width=500, height=300):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry(f"{width}x{height}")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+
+        # Center on screen
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        self.geometry(f"{width}x{height}+{x}+{y}")
+
+        # Configure grid
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Create content frame
+        content_frame = ctk.CTkFrame(self, corner_radius=10)
+        content_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        content_frame.grid_columnconfigure(0, weight=1)
+
+        # Add icon if provided
+        if icon:
+            icon_label = ctk.CTkLabel(content_frame, text=icon, font=("Arial", 32))
+            icon_label.grid(row=0, column=0, pady=(20, 10))
+
+        # Add message with larger font
+        message_label = ctk.CTkLabel(
+            content_frame,
+            text=message,
+            font=("Segoe UI", 18),
+            wraplength=width - 80,
+            justify="center"
+        )
+        message_label.grid(row=1, column=0, padx=20, pady=10)
+
+        # Add buttons
+        button_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        button_frame.grid(row=2, column=0, pady=(10, 20))
+
+        self.result = None
+        for i, btn_text in enumerate(buttons):
+            btn = ctk.CTkButton(
+                button_frame,
+                text=btn_text,
+                width=120,
+                height=40,
+                font=("Segoe UI", 16, "bold"),
+                command=lambda t=btn_text: self.on_button_click(t)
+            )
+            btn.grid(row=0, column=i, padx=10)
+
+    def on_button_click(self, text):
+        self.result = text
+        self.destroy()
+
+    def show(self):
+        self.wait_window()
+        return self.result
 
 
 # DATABASE MANAGER CLASS WITH ENHANCED ERROR HANDLING
@@ -117,7 +183,8 @@ class DatabaseManager:
 
         except Exception as e:
             logging.error(f"Database initialization failed: {e}")
-            messagebox.showerror("Database Error", f"Failed to initialize database: {str(e)}")
+            # Use standard message box for errors
+            messagebox.showerror("Database Error", f"Failed to initialize database:\n{str(e)}")
 
 
 class Sidebar(ctk.CTkFrame):
@@ -211,6 +278,7 @@ class SummaryCard(ctk.CTkFrame):
             trend_color = "#27ae60" if new_trend[0] == "+" else "#e74c3c"
             self.trend_label.configure(text=new_trend, text_color=trend_color)
 
+
 class LowStockItem(ctk.CTkFrame):
     def __init__(self, parent, product_name, category, current_stock, status, on_restock):
         super().__init__(parent, fg_color="white", corner_radius=10, border_width=1, border_color="#e0e0e0")
@@ -278,7 +346,7 @@ class AdminDashboardUI(ctk.CTk):
             self.db_manager = DatabaseManager(self.db_path)
         except Exception as e:
             logging.error(f"Database initialization failed: {e}")
-            messagebox.showerror("Database Error", f"Failed to initialize database: {str(e)}")
+            messagebox.showerror("Database Error", f"Failed to initialize database:\n{str(e)}")
 
         # Background setup
         try:
@@ -297,7 +365,6 @@ class AdminDashboardUI(ctk.CTk):
             "Dashboard": lambda: None,
             "Register Product": self.switch_to_registration,
             "Manage Products": lambda: self.redirect_to_manage_product(),  # Updated to redirect
-            "Sales Report": self.view_sales_report  # Added sales report navigation
         }
 
         self.sidebar = Sidebar(self, nav_cmds, self.toggle_sidebar)
@@ -316,8 +383,28 @@ class AdminDashboardUI(ctk.CTk):
         self.load_dashboard_data()
 
     def switch_to_registration(self):
-        """Switch to product registration page"""
-        messagebox.showinfo("Navigation", "Switching to Register Product page")
+        """Switch to product registration page without confirmation popup"""
+        try:
+            # Close current window
+            self.destroy()
+
+            # Launch registration page
+            current_dir = Path(__file__).parent
+            register_script = current_dir / "registerProduct.py"
+
+            if register_script.exists():
+                subprocess.Popen(['python', str(register_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                app = AdminDashboardUI()
+                app.mainloop()
+
+        except Exception as e:
+            logging.error(f"Error switching to registration: {e}")
+            messagebox.showerror("Navigation Error", "Failed to open registration page")
+            # Reopen dashboard if redirection fails
+            app = AdminDashboardUI()
+            app.mainloop()
 
     def switch_to_management(self):
         """Switch to product management page"""
@@ -331,42 +418,6 @@ class AdminDashboardUI(ctk.CTk):
             self.sidebar.pack(side="left", fill="y", before=self.main)
         self.sidebar_visible = not self.sidebar_visible
 
-    # ADDED METHOD FOR SALES REPORT
-    def view_sales_report(self):
-        """Handle sales report viewing"""
-        # Confirm with user
-        if messagebox.askyesno("Confirm", "Leave this page and view sales reports?"):
-            # Redirect to salesReport.py
-            self.redirect_to_sales_report()
-
-    def redirect_to_sales_report(self):
-        """Launch salesReport.py in a new process"""
-        try:
-            # Get current script directory
-            current_dir = Path(__file__).parent
-            report_script = current_dir / "salesReport.py"
-
-            # Check if file exists
-            if not report_script.exists():
-                messagebox.showerror("Error", "Sales report module not found!")
-                return
-
-            # Close current window
-            self.destroy()
-
-            # Launch new process
-            if sys.platform == "win32":
-                subprocess.Popen(['python', str(report_script)])
-            else:
-                subprocess.Popen(['python3', str(report_script)])
-
-        except Exception as e:
-            logging.error(f"Redirection failed: {e}")
-            messagebox.showerror("Error", "Could not launch sales report")
-            # Reopen dashboard if redirection fails
-            app = AdminDashboardUI()
-            app.mainloop()
-
     def build_ui(self):
         """Build the main UI components"""
         # Main container frame
@@ -377,8 +428,8 @@ class AdminDashboardUI(ctk.CTk):
         self.container.grid_columnconfigure(0, weight=1)
         self.container.grid_rowconfigure(0, weight=0)  # Welcome message
         self.container.grid_rowconfigure(1, weight=0)  # Summary cards
-        self.container.grid_rowconfigure(2, weight=1)  # Charts/Low stock alerts (now gets more space)
-        self.container.grid_rowconfigure(3, weight=0)  # Recent activity
+        self.container.grid_rowconfigure(2, weight=3)  # Charts/Low stock alerts (now gets more space)
+        self.container.grid_rowconfigure(3, weight=1)  # Recent activity (smaller)
 
         # Welcome message
         welcome_frame = ctk.CTkFrame(self.container, fg_color="transparent")
@@ -412,7 +463,7 @@ class AdminDashboardUI(ctk.CTk):
         self.summary_cards["value"].grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
         self.summary_cards["low_stock"].grid(row=0, column=3, padx=10, pady=10, sticky="nsew")
 
-        # Charts and alerts container
+        # Charts and alerts container - LARGER SECTION
         charts_alerts_frame = ctk.CTkFrame(self.container, fg_color="transparent")
         charts_alerts_frame.grid(row=2, column=0, sticky="nsew", padx=20, pady=(0, 10))  # Reduced top padding
         charts_alerts_frame.columnconfigure(0, weight=3)
@@ -420,7 +471,8 @@ class AdminDashboardUI(ctk.CTk):
         charts_alerts_frame.rowconfigure(0, weight=1)
 
         # Inventory chart - make larger
-        chart_frame = ctk.CTkFrame(charts_alerts_frame, fg_color="white", corner_radius=15)
+        chart_frame = ctk.CTkFrame(charts_alerts_frame, fg_color="white", corner_radius=15,
+                                   height=500)  # Increased height
         chart_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=0)
         chart_frame.grid_propagate(False)
 
@@ -441,7 +493,8 @@ class AdminDashboardUI(ctk.CTk):
         self.chart_canvas_frame.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 10), ipadx=10, ipady=10)
 
         # Low stock alerts - make larger
-        alerts_frame = ctk.CTkFrame(charts_alerts_frame, fg_color="white", corner_radius=15)
+        alerts_frame = ctk.CTkFrame(charts_alerts_frame, fg_color="white", corner_radius=15,
+                                    height=500)  # Increased height
         alerts_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=0)
         alerts_frame.grid_propagate(False)
 
@@ -464,15 +517,17 @@ class AdminDashboardUI(ctk.CTk):
         self.alerts_scroll_frame = ctk.CTkScrollableFrame(
             alerts_frame,
             fg_color="#f8f9fa",
-            corner_radius=10
+            corner_radius=10,
+            height=400  # Increased height
         )
         self.alerts_scroll_frame.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 10), ipadx=10, ipady=10)
 
         # Placeholder for alerts
         self.low_stock_items = []
 
-        # Recent activity
-        activity_frame = ctk.CTkFrame(self.container, fg_color="white", corner_radius=15)
+        # Recent activity - SMALLER SECTION
+        activity_frame = ctk.CTkFrame(self.container, fg_color="white", corner_radius=15,
+                                      height=250)  # Decreased height
         activity_frame.grid(row=3, column=0, sticky="nsew", padx=20, pady=(10, 20))  # Adjusted top padding
         activity_frame.grid_rowconfigure(1, weight=1)
         activity_frame.grid_columnconfigure(0, weight=1)
@@ -484,10 +539,21 @@ class AdminDashboardUI(ctk.CTk):
         ctk.CTkLabel(activity_header, text="Recent Activity",
                      font=("Segoe UI", 20, "bold"), text_color="#2c3e50").pack(side="left")
 
-        ctk.CTkButton(activity_header, text="View All",
-                      width=100, height=30, font=("Segoe UI", 14),
-                      fg_color="transparent", border_width=1, border_color="#3498db",
-                      text_color="#3498db", hover_color="#e1f0fa").pack(side="right")
+        # ADDED COMMAND TO VIEW ALL ACTIVITIES
+        view_all_btn = ctk.CTkButton(
+            activity_header,
+            text="View All",
+            width=100,
+            height=30,
+            font=("Segoe UI", 14),
+            fg_color="transparent",
+            border_width=1,
+            border_color="#3498db",
+            text_color="#3498db",
+            hover_color="#e1f0fa",
+            command=self.view_all_activities  # ADDED COMMAND
+        )
+        view_all_btn.pack(side="right")
 
         # Activity content
         activity_content = ctk.CTkFrame(activity_frame, fg_color="transparent")
@@ -499,6 +565,108 @@ class AdminDashboardUI(ctk.CTk):
         # Add a frame to hold activity entries
         self.activities_frame = ctk.CTkFrame(activity_content, fg_color="transparent")
         self.activities_frame.pack(fill="both", expand=True)
+
+    def view_all_activities(self):
+        """Show all recent activities in a new window"""
+        try:
+            # Create a new top-level window
+            activities_window = ctk.CTkToplevel(self)
+            activities_window.title("All Recent Activities")
+            activities_window.geometry("800x600")
+            activities_window.transient(self)
+            activities_window.grab_set()
+
+            # Center the window
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            window_width = 800
+            window_height = 600
+            x = (screen_width - window_width) // 2
+            y = (screen_height - window_height) // 2
+            activities_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+            # Create header
+            header_frame = ctk.CTkFrame(activities_window, fg_color="#2d3e50")
+            header_frame.pack(fill="x", padx=0, pady=0)
+
+            ctk.CTkLabel(
+                header_frame,
+                text="All Recent Activities",
+                font=("Segoe UI", 24, "bold"),
+                text_color="white"
+            ).pack(padx=20, pady=15)
+
+            # Create scrollable content area
+            scroll_frame = ctk.CTkScrollableFrame(
+                activities_window,
+                fg_color="white"
+            )
+            scroll_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+            # Get all activities from database
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT productName, date 
+                    FROM product 
+                    ORDER BY date DESC 
+                """)
+                all_activities = cursor.fetchall()
+
+            # Display all activities
+            if not all_activities:
+                ctk.CTkLabel(
+                    scroll_frame,
+                    text="No activities found",
+                    font=("Segoe UI", 16),
+                    text_color="#7f8c8d"
+                ).pack(pady=20)
+            else:
+                for i, activity in enumerate(all_activities):
+                    product_name, date_str = activity
+
+                    # Format activity text
+                    try:
+                        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                        formatted_date = date_obj.strftime("%B %d, %Y")
+                    except:
+                        formatted_date = date_str
+
+                    activity_text = f"Added {product_name} on {formatted_date}"
+
+                    # Create activity frame
+                    activity_frame = ctk.CTkFrame(
+                        scroll_frame,
+                        fg_color="#f8f9fa" if i % 2 == 0 else "white",
+                        height=50
+                    )
+                    activity_frame.pack(fill="x", pady=2)
+
+                    # Add activity text
+                    ctk.CTkLabel(
+                        activity_frame,
+                        text=activity_text,
+                        font=("Segoe UI", 16),
+                        anchor="w",
+                        text_color="#2c3e50"
+                    ).pack(side="left", padx=15, pady=10)
+
+                    # Add time ago indicator
+                    try:
+                        time_ago = self.format_time_ago(date_obj)
+                        ctk.CTkLabel(
+                            activity_frame,
+                            text=time_ago,
+                            font=("Segoe UI", 14),
+                            anchor="e",
+                            text_color="#7f8c8d"
+                        ).pack(side="right", padx=15, pady=10)
+                    except:
+                        pass
+
+        except Exception as e:
+            logging.error(f"Error showing all activities: {e}")
+            messagebox.showerror("Error", "Could not load all activities")
 
     def load_dashboard_data(self):
         """Load data for the dashboard from database with better error handling"""
@@ -624,9 +792,9 @@ class AdminDashboardUI(ctk.CTk):
                     product_id, product_name, category, stock, status = item
                     if stock <= 0:
                         status = "Out of Stock"
-                    elif stock <= 5:
+                    elif stock <= 1:
                         status = "Critical Stock"
-                    elif stock <= 10:
+                    elif stock <= 4:
                         status = "Low Stock"
 
                     # Create callback for restock button
@@ -660,17 +828,22 @@ class AdminDashboardUI(ctk.CTk):
                 cursor.execute("SELECT productName FROM product WHERE productID=?", (product_id,))
                 product_name = cursor.fetchone()[0]
 
-            response = messagebox.askyesno(
+            # Use our custom message box for confirmation (ONLY FOR RESTOCK)
+            response = CustomMessageBox(
+                self,
                 "Confirm Restock",
-                f"Leave this page to manage '{product_name}'?\nYou'll be able to restock it on the next page."
-            )
+                f"Leave this page to manage '{product_name}'?\nYou'll be able to restock it on the next page.",
+                buttons=("Yes", "No"),
+                width=450,
+                height=180
+            ).show()
 
-            if response:
+            if response == "Yes":
                 self.redirect_to_manage_product(product_id)
 
         except Exception as e:
             logging.error(f"Error redirecting to manage product: {e}")
-            messagebox.showerror("Error", "Could not redirect to product management")
+            messagebox.showerror("Navigation Error", "Could not redirect to product management")
 
     def redirect_to_manage_product(self, product_id=None):
         """Launch manageProduct.py in a new process"""
@@ -695,7 +868,7 @@ class AdminDashboardUI(ctk.CTk):
 
         except Exception as e:
             logging.error(f"Redirection failed: {e}")
-            messagebox.showerror("Error", "Could not launch product management")
+            messagebox.showerror("Navigation Error", "Could not launch product management")
             # Reopen dashboard if redirection fails
             app = AdminDashboardUI()
             app.mainloop()
@@ -844,4 +1017,8 @@ if __name__ == '__main__':
         app.mainloop()
     except Exception as e:
         logging.error(f"Application error: {e}")
+        # Use standard message box for critical errors
+        root = tk.Tk()
+        root.withdraw()
         messagebox.showerror("Critical Error", f"The application encountered an error and will close.\nError: {str(e)}")
+        root.destroy()
