@@ -1020,5 +1020,4 @@ if __name__ == '__main__':
         # Use standard message box for critical errors
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("Critical Error", f"The application encountered an error and will close.\nError: {str(e)}")
         root.destroy()
