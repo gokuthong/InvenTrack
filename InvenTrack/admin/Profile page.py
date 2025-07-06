@@ -3,6 +3,9 @@ import sqlite3
 from PIL import Image
 from tkinter import messagebox
 import re
+import subprocess
+import sys
+import os
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -29,6 +32,17 @@ class ProfilePageDatabase:
             print(f"Database update error: {e}")
             return False
 
+    def check_duplicate_username(self, new_username, current_user_id):
+        try:
+            self.cursor.execute(
+                "SELECT UserID FROM User WHERE Username = ? AND UserID != ?",
+                (new_username, current_user_id)
+            )
+            return self.cursor.fetchone() is not None
+        except sqlite3.Error as e:
+            print(f"Database error while checking duplicate username: {e}")
+            return False
+
     def close(self):
         self.conn.close()
 
@@ -43,12 +57,9 @@ class ProfilePage(ctk.CTk):
         self.resizable(True, True)
 
         self.image_refs = []
-        placeholder_img = Image.new('RGB', (260, 155), color='#cccccc')
-        self.default_image = ctk.CTkImage(placeholder_img, size=(260, 155))
-        self.image_refs.append(self.default_image)
 
         try:
-            pil_bg = Image.open("assets/frame0/adminbackground.jpg")
+            pil_bg = Image.open("Pictures/adminbackground.jpg")
             ctk_bg = ctk.CTkImage(pil_bg, size=(1920, 1080))
             self.image_refs.append(ctk_bg)
             bg_label = ctk.CTkLabel(self, image=ctk_bg, text="")
@@ -69,7 +80,7 @@ class ProfilePage(ctk.CTk):
             print("Warning: No data found for UserID=1. Check if the 'Users' table is populated or exists in inventoryproject.db.")
 
         self.sidebar_expanded = False
-        self.sidebar_width = 250  # Increased from 180 to 250
+        self.sidebar_width = 180
         self.current_page = "Profile Page"
 
         self._create_header()
@@ -88,26 +99,21 @@ class ProfilePage(ctk.CTk):
         self.title_label.place(x=120, y=10)
 
     def _create_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, fg_color="#2d3e50", corner_radius=0, width=self.sidebar_width, height=1080, border_width=0, border_color="#ddd")
-        ctk.CTkLabel(self.sidebar, text="Admin Dashboard", font=("Segoe UI", 24), text_color="#fff").place(x=20, y=20)
+        self.sidebar = ctk.CTkFrame(self, fg_color="#2d3e50", corner_radius=0, width=self.sidebar_width, height=1080,
+                                    border_width=0, border_color="#ddd")
+        ctk.CTkLabel(self.sidebar, text="InvenTrack", font=("Segoe UI", 28, "bold"), text_color="#fff").place(x=20, y=20)
         self.sidebar_buttons = {}
         y = 80
-        nav_items = [
-            ("Dashboard", lambda: messagebox.showinfo("Dashboard", "Go to Dashboard")),
-            ("Register Product", lambda: messagebox.showinfo("Register Product", "Go to Inventory")),
-            ("Manage Product Details", lambda: messagebox.showinfo("Manage Product Details", "Go to Product Management")),
-            ("Profile Page", self.show_profile)
-        ]
-        for name, command in nav_items:
+        for name in ["Profile Page"]:  # Updated to include only Profile Page
             is_current = (name == self.current_page)
-            btn = ctk.CTkButton(self.sidebar, text=name, width=230, height=50, corner_radius=10,  # Increased width from 160 to 230
+            btn = ctk.CTkButton(self.sidebar, text=name, width=160, height=50, corner_radius=10,
                                 fg_color="#34495E" if is_current else "transparent",
                                 hover_color="#3E5870" if is_current else "#4A6374",
-                                text_color="#FFFFFF", font=("Segoe UI", 18.5), command=command)
+                                text_color="#FFFFFF", font=("Segoe UI", 18.5), command=self.show_profile)
             btn.place(x=10, y=y)
             self.sidebar_buttons[name] = btn
             y += 70
-        ctk.CTkButton(self.sidebar, text="🔒 Log Out", width=230, height=50, corner_radius=0,  # Increased width from 160 to 230
+        ctk.CTkButton(self.sidebar, text="🔒 Log Out", width=160, height=50, corner_radius=0,
                       fg_color="transparent", hover_color="#f0f8ff", text_color="#fff",
                       font=("Segoe UI", 18.5), command=self.logout).place(x=10, y=950)
 
@@ -120,7 +126,6 @@ class ProfilePage(ctk.CTk):
 
     def _create_top_buttons(self):
         btn_size = 35
-        margin = 12
         self.cart_btn = ctk.CTkButton(self, text="🛒", width=btn_size, height=btn_size, corner_radius=0,
                                       fg_color="#2d3e50", bg_color="#2d3e50", hover_color="#1a252f",
                                       text_color="#fff", font=("Segoe UI", 20), command=lambda: print("Go to Cart"))
@@ -141,7 +146,7 @@ class ProfilePage(ctk.CTk):
 
     def toggle_sidebar(self):
         steps, total_duration = 5, 50
-        delta = self.sidebar_width // steps  # Updated delta based on new sidebar_width
+        delta = self.sidebar_width // steps
 
         def expand(step=0):
             w = delta * step
@@ -149,7 +154,7 @@ class ProfilePage(ctk.CTk):
             x_off = w
             self.toggle_btn.place_configure(x=10 + x_off)
             self.title_label.place_configure(x=120 + x_off)
-            self.panel.place_configure(x=110 + x_off)
+            self.panel.place_configure(x=120 + x_off)  # Adjusted to match AddCashierPage
             self.update_button_positions()
             if step < steps:
                 self.after(total_duration // steps, lambda: expand(step + 1))
@@ -162,7 +167,7 @@ class ProfilePage(ctk.CTk):
             x_off = w
             self.toggle_btn.place_configure(x=10 + x_off)
             self.title_label.place_configure(x=120 + x_off)
-            self.panel.place_configure(x=120 + x_off)
+            self.panel.place_configure(x=120 + x_off)  # Adjusted to match AddCashierPage
             self.update_button_positions()
             if step > 0:
                 self.after(total_duration // steps, lambda: collapse(step - 1))
@@ -187,7 +192,7 @@ class ProfilePage(ctk.CTk):
             else:
                 btn.configure(fg_color="transparent", hover_color="#4A6374")
         x_off = self.sidebar_width if self.sidebar_expanded else 0
-        self.panel.place(x=120 + x_off, y=80)
+        self.panel.place(x=120 + x_off, y=80)  # Adjusted to match AddCashierPage
         if self.sidebar_expanded:
             self.toggle_sidebar()
         else:
@@ -224,7 +229,7 @@ class ProfilePage(ctk.CTk):
         self.back_button = ctk.CTkButton(self.profile_frame, text="Back", font=("Arial", 22), width=120, height=50, command=self.back)
         self.back_button.place(x=190, y=720)
 
-        self.my_user_profile = ctk.CTkLabel(self.panel, text="My User Profile", font=("Trebuchet MS", 80), text_color="light blue", width=200, height=80, anchor="center")
+        self.my_user_profile=ctk.CTkLabel(self.panel, text="My User Profile", font=("Trebuchet MS", 80), text_color="light blue", width=200, height=80, anchor="center")
         self.my_user_profile.place(x=450, y=40)
 
         self.name_label = ctk.CTkLabel(master=self.panel, text="Name:", font=("Arial", 45), text_color="#fff", width=200, height=80, anchor="w")
@@ -239,8 +244,14 @@ class ProfilePage(ctk.CTk):
 
         self.password_label = ctk.CTkLabel(master=self.panel, text="Password:", font=("Arial", 45), text_color="#fff", width=200, height=80, anchor="w")
         self.password_label.place(x=450, y=310)
-        self.password_value_label = ctk.CTkLabel(master=self.panel, text=self.password, font=("Trebuchet MS", 45), text_color="#fff", width=400, height=80, anchor="w")
+        self.password_value_label = ctk.CTkLabel(master=self.panel, text=self.censor_password(self.password),
+                                                 font=("Trebuchet MS", 45), text_color="#fff", width=400, height=80,
+                                                 anchor="w")
         self.password_value_label.place(x=750, y=310)
+
+        self.password_hidden = True
+
+        self.password_value_label.configure(text=self.censor_password(self.password))
 
         self.mobile_number_label = ctk.CTkLabel(master=self.panel, text="Mobile Number:", font=("Arial", 45), text_color="#fff", width=200, height=80, anchor="w")
         self.mobile_number_label.place(x=450, y=390)
@@ -249,6 +260,18 @@ class ProfilePage(ctk.CTk):
 
         self.edit_button = ctk.CTkButton(self.panel, text="Edit", font=("Arial", 22), width=120, height=50, command=self.toggle_edit_mode)
         self.edit_button.place(x=1300, y=720)
+
+    def censor_password(self, password):
+        return "*" * len(password) if password else ""
+
+    def toggle_password_visibility(self):
+        if self.password_hidden:
+            self.password_value_label.configure(text=self.password)
+            self.toggle_password_btn.configure(text="🙈 Hide")
+        else:
+            self.password_value_label.configure(text=self.censor_password(self.password))
+            self.toggle_password_btn.configure(text="👁 Show")
+        self.password_hidden = not self.password_hidden
 
     def toggle_edit_mode(self):
         if not self.is_editing:
@@ -260,15 +283,35 @@ class ProfilePage(ctk.CTk):
             self.name_entry.insert(0, self.username)
             self.name_entry.place(x=650, y=150)
 
-            self.password_entry = ctk.CTkEntry(master=self.panel, font=("Arial", 45), width=400, height=80)
+            self.password_entry = ctk.CTkEntry(master=self.panel, font=("Arial", 45), width=400, height=80, show="*")
             self.password_entry.insert(0, self.password)
             self.password_entry.place(x=750, y=310)
+
+            self.password_visible = False
+            self.toggle_password_btn = ctk.CTkButton(
+                master=self.panel,
+                text="👁 Show",
+                font=("Arial", 20),
+                width=100,
+                height=40,
+                command=self.toggle_password_entry_visibility
+            )
+            self.toggle_password_btn.place(x=1170, y=330)
 
             self.edit_button.destroy()
             self.finish_button = ctk.CTkButton(self.panel, text="Finish", font=("Arial", 22), width=120, height=50, command=self.save_changes)
             self.finish_button.place(x=1300, y=720)
         else:
             self.save_changes()
+
+    def toggle_password_entry_visibility(self):
+        if self.password_visible:
+            self.password_entry.configure(show="*")
+            self.toggle_password_btn.configure(text="👁 Show")
+        else:
+            self.password_entry.configure(show="")
+            self.toggle_password_btn.configure(text="🙈 Hide")
+        self.password_visible = not self.password_visible
 
     def save_changes(self):
         new_username = self.name_entry.get().strip()
@@ -281,8 +324,13 @@ class ProfilePage(ctk.CTk):
             messagebox.showerror(title="Error", message="Username must be at least 3 characters long.", icon="warning")
             return
         if not re.match(r"^[a-zA-Z0-9_]+$", new_username):
-            messagebox.showerror(title="Error", message="Username can only contain letters, numbers, and underscores.", icon="warning")
+            messagebox.showerror(title="Error", message="Username can only contain letters, numbers, and underscores.",
+                                 icon="warning")
             return
+        if self.db.check_duplicate_username(new_username, self.user_id):
+            messagebox.showerror("Error", "Username is already taken. Please choose a different one.")
+            return
+
         if len(new_password) < 8:
             messagebox.showerror("Password Too Short", "Password must be at least 8 characters long.")
             return
@@ -300,17 +348,44 @@ class ProfilePage(ctk.CTk):
             self.username = new_username
             self.password = new_password
             self.username_label.configure(text=self.username)
-            self.name_value_label = ctk.CTkLabel(master=self.panel, text=self.username, font=("Trebuchet MS", 45), text_color="#fff", width=400, height=80, anchor="w")
+
+            self.name_value_label = ctk.CTkLabel(
+                master=self.panel,
+                text=self.username,
+                font=("Trebuchet MS", 45),
+                text_color="#fff",
+                width=400,
+                height=80,
+                anchor="w"
+            )
             self.name_value_label.place(x=650, y=150)
-            self.password_value_label = ctk.CTkLabel(master=self.panel, text=self.password, font=("Trebuchet MS", 45), text_color="#fff", width=400, height=80, anchor="w")
+
+            self.password_value_label = ctk.CTkLabel(
+                master=self.panel,
+                text=self.censor_password(self.password),
+                font=("Trebuchet MS", 45),
+                text_color="#fff",
+                width=400,
+                height=80,
+                anchor="w"
+            )
             self.password_value_label.place(x=750, y=310)
 
             self.name_entry.destroy()
             self.password_entry.destroy()
             self.finish_button.destroy()
+            self.toggle_password_btn.destroy()
 
-            self.edit_button = ctk.CTkButton(self.panel, text="Edit", font=("Arial", 22), width=120, height=50, command=self.toggle_edit_mode)
+            self.edit_button = ctk.CTkButton(
+                self.panel,
+                text="Edit",
+                font=("Arial", 22),
+                width=120,
+                height=50,
+                command=self.toggle_edit_mode
+            )
             self.edit_button.place(x=1300, y=720)
+
             self.is_editing = False
         else:
             messagebox.showerror(title="Error", message="Failed to update profile. Please try again.", icon="error")
@@ -318,6 +393,7 @@ class ProfilePage(ctk.CTk):
     def logout(self):
         self.db.close()
         self.destroy()
+        subprocess.Popen([sys.executable, os.path.join("admin", "login.py")])
 
     def back(self):
         self.db.close()
@@ -328,9 +404,6 @@ class ProfilePage(ctk.CTk):
     def __del__(self):
         self.db.close()
 
-if __name__ == "__main__":
-    app = ProfilePage()
-    app.mainloop()
 if __name__ == "__main__":
     app = ProfilePage()
     app.mainloop()
