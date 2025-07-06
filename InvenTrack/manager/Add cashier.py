@@ -3,6 +3,9 @@ import sqlite3
 from PIL import Image
 from tkinter import messagebox
 import re
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -41,6 +44,11 @@ class AddCashierPageDatabase:
             print(f"Database insert error: {e}")
             return False
 
+    def is_duplicate(self, username, email, phone_number):
+        self.cursor.execute("SELECT * FROM User WHERE Username=? OR Email=? OR PhoneNumber=?",
+                            (username, email, phone_number))
+        return self.cursor.fetchone() is not None
+
     def close(self):
         self.conn.close()
 
@@ -60,7 +68,7 @@ class AddCashierPage(ctk.CTk):
         self.image_refs.append(self.default_image)
 
         try:
-            pil_bg = Image.open("Pictures/adminbackground.jpg")
+            pil_bg = Image.open("cashier/pictures/background.png")
             ctk_bg = ctk.CTkImage(pil_bg, size=(1920, 1080))
             self.image_refs.append(ctk_bg)
             bg_label = ctk.CTkLabel(self, image=ctk_bg, text="")
@@ -190,6 +198,15 @@ class AddCashierPage(ctk.CTk):
         else:
             self.update_button_positions()
 
+    def toggle_password_visibility(self):
+        self.password_visible = not self.password_visible
+        if self.password_visible:
+            self.password_entry.configure(show="")
+            self.toggle_password_btn.configure(text="🙈 Hide")
+        else:
+            self.password_entry.configure(show="*")
+            self.toggle_password_btn.configure(text="👁 Show")
+
     def create_main_add_cashier_frame(self):
         # Form frame with increased size to better display contents
         self.form_frame = ctk.CTkFrame(self, fg_color="#fff", bg_color="#fff", width=1000, height=700)  # Increased width to 800, height to 700
@@ -213,8 +230,20 @@ class AddCashierPage(ctk.CTk):
         # Password
         self.password_label = ctk.CTkLabel(self.form_frame, text="Password:", font=("Arial", 30), text_color="#000")
         self.password_label.place(x=100, y=310)
-        self.password_entry = ctk.CTkEntry(self.form_frame, font=("Arial", 30), width=500, height=50, show="*")  # Increased width
+        self.password_entry = ctk.CTkEntry(self.form_frame, font=("Arial", 30), width=390, height=50, show="*")  # Increased width
         self.password_entry.place(x=340, y=305)
+
+        self.password_visible = False
+
+        self.toggle_password_btn = ctk.CTkButton(
+            self.form_frame,
+            text="👁 Show",
+            font=("Arial", 20),
+            width=100,
+            height=40,
+            command=self.toggle_password_visibility
+        )
+        self.toggle_password_btn.place(x=740, y=310)
 
         # Phone Number
         self.phone_label = ctk.CTkLabel(self.form_frame, text="Phone Number:", font=("Arial", 30), text_color="#000")
@@ -222,17 +251,35 @@ class AddCashierPage(ctk.CTk):
         self.phone_entry = ctk.CTkEntry(self.form_frame, font=("Arial", 30), width=500, height=50)  # Increased width
         self.phone_entry.place(x=340, y=385)
 
-        # Buttons
-        self.add_button = ctk.CTkButton(self.form_frame, text="Add Cashier", font=("Arial", 22), width=200, height=50, command=self.add_cashier)  # Increased button width
-        self.add_button.place(x=280, y=500)
-        self.back_button = ctk.CTkButton(self.form_frame, text="Back", font=("Arial", 22), width=200, height=50, command=self.back)  # Increased button width
-        self.back_button.place(x=530, y=500)
+        button_y = 500
+        self.add_button = ctk.CTkButton(self.form_frame, text="Add Cashier", font=("Arial", 22), width=180, height=50,
+                                        command=self.add_cashier)
+        self.add_button.place(x=220, y=button_y)
+
+        self.clear_button = ctk.CTkButton(self.form_frame, text="Clear", font=("Arial", 22), width=180, height=50,
+                                          command=self.clear_fields)
+        self.clear_button.place(x=420, y=button_y)
+
+        self.back_button = ctk.CTkButton(self.form_frame, text="Back", font=("Arial", 22), width=180, height=50,
+                                         command=self.back)
+        self.back_button.place(x=620, y=button_y)
 
     def add_cashier(self):
         username = self.username_entry.get().strip()
         email = self.email_entry.get().strip()
         password = self.password_entry.get().strip()
         phone_number = self.phone_entry.get().strip()
+
+        # Duplicate checks
+        if self.db.is_duplicate("Username", username):
+            messagebox.showerror("Error", "Username already exists.")
+            return
+        if self.db.is_duplicate("Email", email):
+            messagebox.showerror("Error", "Email already exists.")
+            return
+        if self.db.is_duplicate("PhoneNumber", phone_number):
+            messagebox.showerror("Error", "Phone number already exists.")
+            return
 
         # Validation checks
         if not username:
@@ -277,12 +324,67 @@ class AddCashierPage(ctk.CTk):
 
         if self.db.add_cashier(username, email, password, phone_number):
             messagebox.showinfo("Success", "Cashier added successfully!")
+            self.send_verification_email(email, username)
             self.username_entry.delete(0, 'end')
             self.email_entry.delete(0, 'end')
             self.password_entry.delete(0, 'end')
             self.phone_entry.delete(0, 'end')
         else:
             messagebox.showerror("Error", "Failed to add cashier. Username or email may already exist.")
+
+    def clear_fields(self):
+        self.username_entry.delete(0, 'end')
+        self.email_entry.delete(0, 'end')
+        self.password_entry.delete(0, 'end')
+        self.phone_entry.delete(0, 'end')
+        if not self.password_visible:
+            self.password_entry.configure(show="*")  # ensure it's reset
+
+    def send_verification_email(self, recipient_email, username):
+        sender_email = "youremail@example.com"
+        sender_password = "your_app_password"
+
+        message = MIMEMultipart("alternative")
+        message["Subject"] = "Cashier Account Verification"
+        message["From"] = sender_email
+        message["To"] = recipient_email
+
+        text = f"""\
+    Hi {username},
+
+    Your account has been successfully created as a cashier.
+    This is a confirmation email from InvenTrack.
+
+    Thank you,
+    InvenTrack Team
+    """
+        html = f"""\
+    <html>
+      <body>
+        <p>Hi {username},<br><br>
+           Your account has been <b>successfully created</b> as a cashier.<br><br>
+           This is a confirmation email from <b>InvenTrack</b>.<br><br>
+           Thank you,<br>
+           <b>InvenTrack Team</b>
+        </p>
+      </body>
+    </html>
+    """
+
+        part1 = MIMEText(text, "plain")
+        part2 = MIMEText(html, "html")
+        message.attach(part1)
+        message.attach(part2)
+
+        try:
+            server = smtplib.SMTP("smtp.gmail.com", 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, recipient_email, message.as_string())
+            server.quit()
+            print("Verification email sent successfully.")
+        except Exception as e:
+            print(f"Failed to send verification email: {e}")
 
     def logout(self):
         self.db.close()
