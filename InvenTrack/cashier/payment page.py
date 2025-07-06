@@ -8,6 +8,9 @@ import re
 import qrcode
 import os
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -29,7 +32,7 @@ class PaymentPageDatabase:
                 ExpiryDate BLOB NOT NULL,
                 CVV BLOB NOT NULL,
                 PaymentDateTime TEXT NOT NULL,
-                FOREIGN KEY (TransactionID) REFERENCES TransactionDetail(TransactionID)
+                FOREIGN KEY (TransactionID) REFERENCES `Transaction`(TransactionID)
             )
         """)
         self.conn.commit()
@@ -48,6 +51,51 @@ class PaymentPageDatabase:
             print(f"Database error during card payment insertion: {e}")
             return False
 
+    def insert_transaction(self, total_amount, cashier_id):
+        """Insert a new transaction into the Transaction table."""
+        transaction_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            self.cursor.execute("""
+                INSERT INTO `Transaction` (DateTime, TotalAmount, CashierID)
+                VALUES (?, ?, ?)
+            """, (transaction_datetime, total_amount, cashier_id))
+            self.conn.commit()
+            return self.cursor.lastrowid  # Return the TransactionID of the newly inserted transaction
+        except sqlite3.Error as e:
+            print(f"Database error during transaction insertion: {e}")
+            return None
+
+    def deduct_stock(self, cart_items):
+        """Deduct stock quantities for sold items in the product table and return low stock items."""
+        low_stock_items = []
+        try:
+            for product_id, quantity in cart_items.items():
+                # Check current stock
+                self.cursor.execute("SELECT stockQuantity, productName FROM product WHERE productID = ?", (product_id,))
+                result = self.cursor.fetchone()
+                if result is None:
+                    print(f"Product ID {product_id} not found in database.")
+                    return False, low_stock_items
+                current_stock, product_name = result
+                if current_stock < quantity:
+                    print(f"Insufficient stock for {product_name} (ID: {product_id}). Required: {quantity}, Available: {current_stock}")
+                    return False, low_stock_items
+                # Update stock
+                new_stock = current_stock - quantity
+                self.cursor.execute("UPDATE product SET stockQuantity = ? WHERE productID = ?", (new_stock, product_id))
+                # Check if stock is below 5
+                if new_stock < 5:
+                    low_stock_items.append({
+                        'product_id': product_id,
+                        'product_name': product_name,
+                        'stock_quantity': new_stock
+                    })
+            self.conn.commit()
+            return True, low_stock_items
+        except sqlite3.Error as e:
+            print(f"Database error during stock deduction: {e}")
+            return False, low_stock_items
+
     def get_latest_transaction(self):
         self.cursor.execute("SELECT TransactionID, TotalAmount FROM `Transaction` ORDER BY DateTime DESC LIMIT 1")
         return self.cursor.fetchone()
@@ -60,9 +108,10 @@ class PaymentPageDatabase:
         self.conn.close()
 
 class PaymentPage(ctk.CTk):
-    def __init__(self):
+    def __init__(self, cashier_id=1):
         super().__init__()
         self.db = PaymentPageDatabase()
+        self.cashier_id = cashier_id  # Store cashier_id
         self.title("Payment Page")
         self.geometry("1920x1080")
         self.configure(fg_color="white")
@@ -251,11 +300,54 @@ class PaymentPage(ctk.CTk):
         """Return the filename used to persist the cart."""
         return "cart.json"
 
+    def clear_cart(self):
+        """Clear the cart.json file."""
+        try:
+            with open(self._cart_filepath(), "w", encoding="utf-8") as f:
+                json.dump({}, f)
+        except Exception as e:
+            print(f"Failed to clear cart.json: {e}")
+
+    def send_low_stock_email(self, low_stock_items):
+        """Send an email to the manager with low stock alert."""
+        if not low_stock_items:
+            return
+
+        # Hardcoded email configuration (replace with actual values)
+        sender_email = "your_email@gmail.com"  # Replace with your Gmail address
+        sender_password = "your_app_password"  # Replace with your Gmail App Password
+        receiver_email = "manager_email@example.com"  # Replace with manager's email
+
+        # Create email
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = receiver_email
+        msg['Subject'] = "Low Stock Alert - InvenTrack Store"
+
+        # Email body
+        body = "Dear Manager,\n\nThe following products have low stock (below 5 units) after a recent transaction:\n\n"
+        for item in low_stock_items:
+            body += f"Product ID: {item['product_id']}, Name: {item['product_name']}, Stock: {item['stock_quantity']}\n"
+        body += "\nPlease take appropriate action to restock these items.\n\nBest regards,\nInvenTrack System"
+        msg.attach(MIMEText(body, 'plain'))
+
+        try:
+            # Set up the SMTP server
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+
+            # Send the email
+            server.sendmail(sender_email, receiver_email, msg.as_string())
+            server.quit()
+            print("Low stock email sent successfully.")
+        except Exception as e:
+            print(f"Failed to send low stock email: {str(e)}")
+
     def display_receipt(self, parent_frame):
         for widget in parent_frame.winfo_children():
             widget.destroy()
 
-        # Create a scrollable frame inside the parent_frame
         scrollable_receipt = ctk.CTkScrollableFrame(
             parent_frame,
             fg_color="#f0f0f0",
@@ -266,7 +358,6 @@ class PaymentPage(ctk.CTk):
         scrollable_receipt.place(x=0, y=0, relwidth=1, relheight=1)
 
         y_offset = 10
-        # Header labels
         ctk.CTkLabel(
             scrollable_receipt,
             text="InvenTrack Store",
@@ -309,7 +400,6 @@ class PaymentPage(ctk.CTk):
         ).pack(pady=(5, 0), fill="x")
         y_offset += 25
 
-        # Item header
         header_frame = ctk.CTkFrame(scrollable_receipt, fg_color="#f0f0f0", width=520, height=30)
         header_frame.pack(pady=(5, 0), fill="x")
         ctk.CTkLabel(
@@ -347,7 +437,6 @@ class PaymentPage(ctk.CTk):
         ).place(x=390, y=0)
         y_offset += 35
 
-        # Load cart from cart.json
         cart_items = {}
         cart_filepath = self._cart_filepath()
         if os.path.exists(cart_filepath):
@@ -366,7 +455,6 @@ class PaymentPage(ctk.CTk):
                 ).pack(pady=(5, 0), fill="x")
                 y_offset += 25
 
-        # Items
         self.total_amount = 0.0
         for product_id, quantity in cart_items.items():
             product = self.db.get_product_details(product_id)
@@ -376,10 +464,10 @@ class PaymentPage(ctk.CTk):
                 price = 0.0
             else:
                 name = product[0][:22] + "..." if len(product[0]) > 22 else product[0]
-                price = float(product[1]) if product[1] is not None else 0.0
+                price = round(float(product[1]), 2) if product[1] is not None else 0.0
                 if price <= 0:
                     print(f"Warning: Product ID {product_id} has invalid price: {product[1]}")
-            total = price * quantity
+            total = round(price * quantity, 2)
             self.total_amount += total
 
             item_frame = ctk.CTkFrame(scrollable_receipt, fg_color="#f0f0f0", width=520, height=25)
@@ -419,7 +507,6 @@ class PaymentPage(ctk.CTk):
             ).place(x=390, y=0)
             y_offset += 30
 
-        # Footer
         ctk.CTkLabel(
             scrollable_receipt,
             text="-" * 40,
@@ -431,8 +518,8 @@ class PaymentPage(ctk.CTk):
         y_offset += 25
 
         tax_rate = 0.06
-        tax = self.total_amount * tax_rate
-        total_with_tax = self.total_amount + tax
+        tax = round(self.total_amount * tax_rate, 2)
+        total_with_tax = round(self.total_amount + tax, 2)
         ctk.CTkLabel(
             scrollable_receipt,
             text=f"Subtotal: RM {self.total_amount:.2f}",
@@ -560,19 +647,19 @@ class PaymentPage(ctk.CTk):
                 price = 0.0
             else:
                 name = product[0][:22] + "..." if len(product[0]) > 22 else product[0]
-                price = float(product[1]) if product[1] is not None else 0.0
-            total = price * quantity
+                price = round(float(product[1]), 2) if product[1] is not None else 0.0
+            total = round(price * quantity, 2)
             self.total_amount += total
             qr_content += f"{name:<22} {quantity:>5} {price:>10.2f} {total:>10.2f}\n"
         tax_rate = 0.06
-        tax = self.total_amount * tax_rate
-        total_with_tax = self.total_amount + tax
+        tax = round(self.total_amount * tax_rate, 2)
+        total_with_tax = round(self.total_amount + tax, 2)
         qr_content += "-" * 40 + "\n"
         qr_content += f"Subtotal: RM {self.total_amount:.2f}\n"
         qr_content += f"Tax (6%): RM {tax:.2f}\n"
         qr_content += f"Grand Total: RM {total_with_tax:.2f}\n"
         qr_content += "Message: Go back to payment page to confirm payment"
-        self.total_amount = total_with_tax  # Update for payment validation
+        self.total_amount = total_with_tax
 
         # Generate QR code
         qr = qrcode.QRCode(
@@ -603,10 +690,34 @@ class PaymentPage(ctk.CTk):
             if self.payment_completed:
                 messagebox.showinfo("Payment Already Made", "You have already made your payment.")
                 return
-            self.tng_status_label.configure(text="Payment confirmed. Thank you!", text_color="green")
-            self.payment_completed = True
-            self.clear_receipt_content()
-            self.view_receipt_button.configure(state="normal")
+            try:
+                self.db.conn.execute("BEGIN TRANSACTION")  # Start transaction
+                transaction_id = self.db.insert_transaction(round(self.total_amount, 2), self.cashier_id)
+                if not transaction_id:
+                    self.db.conn.rollback()
+                    self.tng_status_label.configure(text="Failed to save transaction.", text_color="red")
+                    messagebox.showerror("Error", "Failed to save transaction to the database.")
+                    return
+                # Deduct stock
+                success, low_stock_items = self.db.deduct_stock(cart_items)
+                if not success:
+                    self.db.conn.rollback()
+                    self.tng_status_label.configure(text="Failed to update stock.", text_color="red")
+                    messagebox.showerror("Error", "Failed to update product stock. Check stock quantities.")
+                    return
+                self.db.conn.commit()  # Commit transaction
+                self.clear_cart()  # Clear cart after successful payment
+                # Send low stock email if necessary
+                if low_stock_items:
+                    self.send_low_stock_email(low_stock_items)
+                self.tng_status_label.configure(text="Payment confirmed. Thank you!", text_color="green")
+                self.payment_completed = True
+                self.clear_receipt_content()
+                self.view_receipt_button.configure(state="normal")
+            except Exception as e:
+                self.db.conn.rollback()
+                self.tng_status_label.configure(text="Payment processing failed.", text_color="red")
+                messagebox.showerror("Error", f"An error occurred during payment processing: {str(e)}")
 
         confirm_btn = ctk.CTkButton(self.content_frame, text="Confirm Payment", width=240, height=60, fg_color="#2d3e50", font=("Arial", 24), command=confirm_payment)
         confirm_btn.place(x=930, y=590)
@@ -635,6 +746,7 @@ class PaymentPage(ctk.CTk):
         self.cash_entry.place(x=780, y=100)
         self.cash_status_label = ctk.CTkLabel(self.content_frame, text="", font=("Arial", 18))
         self.cash_status_label.place(x=780, y=155)
+
         def add_char(char):
             current = self.cash_entry.get()
             if char == ".":
@@ -644,8 +756,10 @@ class PaymentPage(ctk.CTk):
                     current = "0"
             self.cash_entry.delete(0, "end")
             self.cash_entry.insert(0, current + char)
+
         def clear_entry():
             self.cash_entry.delete(0, "end")
+
         def process_cash_payment():
             if self.payment_completed:
                 messagebox.showinfo("Payment Already Made", "Payment has already been made.")
@@ -654,20 +768,93 @@ class PaymentPage(ctk.CTk):
                 value = float(self.cash_entry.get())
                 if value <= 0:
                     self.cash_status_label.configure(text="Amount must be greater than 0.", text_color="red")
-                elif value < self.total_amount:
-                    remaining = self.total_amount - value
-                    self.cash_status_label.configure(text=f"Insufficient payment. RM {remaining:.2f} needed.", text_color="orange")
+                    return
+                if abs(value - self.total_amount) > 0.01:  # Allow 0.01 difference
+                    if value < self.total_amount:
+                        remaining = self.total_amount - value
+                        self.cash_status_label.configure(text=f"Insufficient payment. RM {remaining:.2f} needed.", text_color="orange")
+                        return
+                    else:
+                        # If overpaid, proceed to process change
+                        self.db.conn.execute("BEGIN TRANSACTION")  # Start transaction
+                        transaction_id = self.db.insert_transaction(round(self.total_amount, 2), self.cashier_id)
+                        if not transaction_id:
+                            self.db.conn.rollback()
+                            self.cash_status_label.configure(text="Failed to save transaction.", text_color="red")
+                            messagebox.showerror("Error", "Failed to save transaction to the database.")
+                            return
+                        # Load cart items
+                        cart_items = {}
+                        cart_filepath = self._cart_filepath()
+                        if os.path.exists(cart_filepath):
+                            try:
+                                with open(cart_filepath, "r", encoding="utf-8") as f:
+                                    cart_items = {int(k): int(v) for k, v in json.load(f).items()}
+                            except Exception as e:
+                                self.db.conn.rollback()
+                                self.cash_status_label.configure(text="Failed to load cart.", text_color="red")
+                                messagebox.showerror("Error", f"Failed to load cart: {str(e)}")
+                                return
+                        # Deduct stock
+                        success, low_stock_items = self.db.deduct_stock(cart_items)
+                        if not success:
+                            self.db.conn.rollback()
+                            self.cash_status_label.configure(text="Failed to update stock.", text_color="red")
+                            messagebox.showerror("Error", "Failed to update product stock. Check stock quantities.")
+                            return
+                        self.db.conn.commit()  # Commit transaction
+                        self.clear_cart()  # Clear cart after successful payment
+                        # Send low stock email if necessary
+                        if low_stock_items:
+                            self.send_low_stock_email(low_stock_items)
+                        change = value - self.total_amount
+                        self.cash_status_label.configure(
+                            text=f"Payment received. Change: RM {change:.2f}" if change > 0 else "Exact amount received. Thank you!",
+                            text_color="green"
+                        )
+                        self.payment_completed = True
+                        self.clear_receipt_content()
+                        self.view_receipt_button.configure(state="normal")
                 else:
-                    change = value - self.total_amount
-                    self.cash_status_label.configure(
-                        text=f"Payment received. Change: RM {change:.2f}" if change > 0 else "Exact amount received. Thank you!",
-                        text_color="green"
-                    )
+                    # Exact payment (within tolerance)
+                    self.db.conn.execute("BEGIN TRANSACTION")  # Start transaction
+                    transaction_id = self.db.insert_transaction(round(self.total_amount, 2), self.cashier_id)
+                    if not transaction_id:
+                        self.db.conn.rollback()
+                        self.cash_status_label.configure(text="Failed to save transaction.", text_color="red")
+                        messagebox.showerror("Error", "Failed to save transaction to the database.")
+                        return
+                    # Load cart items
+                    cart_items = {}
+                    cart_filepath = self._cart_filepath()
+                    if os.path.exists(cart_filepath):
+                        try:
+                            with open(cart_filepath, "r", encoding="utf-8") as f:
+                                cart_items = {int(k): int(v) for k, v in json.load(f).items()}
+                        except Exception as e:
+                            self.db.conn.rollback()
+                            self.cash_status_label.configure(text="Failed to load cart.", text_color="red")
+                            messagebox.showerror("Error", f"Failed to load cart: {str(e)}")
+                            return
+                    # Deduct stock
+                    success, low_stock_items = self.db.deduct_stock(cart_items)
+                    if not success:
+                        self.db.conn.rollback()
+                        self.cash_status_label.configure(text="Failed to update stock.", text_color="red")
+                        messagebox.showerror("Error", "Failed to update product stock. Check stock quantities.")
+                        return
+                    self.db.conn.commit()  # Commit transaction
+                    self.clear_cart()  # Clear cart after successful payment
+                    # Send low stock email if necessary
+                    if low_stock_items:
+                        self.send_low_stock_email(low_stock_items)
+                    self.cash_status_label.configure(text="Exact amount received. Thank you!", text_color="green")
                     self.payment_completed = True
                     self.clear_receipt_content()
                     self.view_receipt_button.configure(state="normal")
             except ValueError:
                 self.cash_status_label.configure(text="Please enter a valid number.", text_color="red")
+
         btn_x, btn_y = 800, 200
         buttons = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"]
         for i, char in enumerate(buttons):
@@ -731,7 +918,6 @@ class PaymentPage(ctk.CTk):
             self.status_label.configure(text="Name must contain only letters and spaces.", text_color="red")
             messagebox.showerror("Error", "Cardholder's name must contain only letters and spaces.")
             return
-
         if not card_number.isdigit():
             self.status_label.configure(text="Card number must contain only digits.", text_color="red")
             messagebox.showerror("Error", "Please enter a valid card number with only digits.")
@@ -740,7 +926,6 @@ class PaymentPage(ctk.CTk):
             self.status_label.configure(text="Card number must be 16 digits.", text_color="red")
             messagebox.showerror("Error", "Please enter a 16-digit card number.")
             return
-
         if len(expiry) != 5 or expiry[2] != "/" or not expiry.replace("/", "").isdigit():
             self.status_label.configure(text="Expiry date must be in MM/YY format.", text_color="red")
             messagebox.showerror("Error", "Please enter a valid expiry date in MM/YY format (e.g., 12/25).")
@@ -757,7 +942,6 @@ class PaymentPage(ctk.CTk):
             self.status_label.configure(text="Invalid expiry date format.", text_color="red")
             messagebox.showerror("Error", "Please enter a valid expiry date in MM/YY format.")
             return
-
         if not cvv.isdigit():
             self.status_label.configure(text="CVV must contain only digits.", text_color="red")
             messagebox.showerror("Error", "Please enter a valid CVV with only digits.")
@@ -766,7 +950,6 @@ class PaymentPage(ctk.CTk):
             self.status_label.configure(text="CVV must be 3 digits.", text_color="red")
             messagebox.showerror("Error", "Please enter a 3-digit CVV.")
             return
-
         try:
             total_value = float(total)
             if total_value <= 0:
@@ -783,16 +966,40 @@ class PaymentPage(ctk.CTk):
             return
 
         try:
+            self.db.conn.execute("BEGIN TRANSACTION")  # Start transaction
+            transaction_id = self.db.insert_transaction(round(self.total_amount, 2), self.cashier_id)
+            if not transaction_id:
+                self.db.conn.rollback()
+                self.status_label.configure(text="Failed to save transaction.", text_color="red")
+                messagebox.showerror("Error", "Failed to save transaction to the database.")
+                return
+
+            # Load cart items
+            cart_items = {}
+            cart_filepath = self._cart_filepath()
+            if os.path.exists(cart_filepath):
+                try:
+                    with open(cart_filepath, "r", encoding="utf-8") as f:
+                        cart_items = {int(k): int(v) for k, v in json.load(f).items()}
+                except Exception as e:
+                    self.db.conn.rollback()
+                    self.status_label.configure(text="Failed to load cart.", text_color="red")
+                    messagebox.showerror("Error", f"Failed to load cart: {str(e)}")
+                    return
+
+            # Deduct stock
+            success, low_stock_items = self.db.deduct_stock(cart_items)
+            if not success:
+                self.db.conn.rollback()
+                self.status_label.configure(text="Failed to update stock.", text_color="red")
+                messagebox.showerror("Error", "Failed to update product stock. Check stock quantities.")
+                return
+
+            # Insert card payment details
             cardholder_name_hashed = bcrypt.hashpw(cardholder_name.encode(), bcrypt.gensalt())
             card_number_hashed = bcrypt.hashpw(card_number.encode(), bcrypt.gensalt())
             expiry_hashed = bcrypt.hashpw(expiry.encode(), bcrypt.gensalt())
             cvv_hashed = bcrypt.hashpw(cvv.encode(), bcrypt.gensalt())
-            transaction = self.db.get_latest_transaction()
-            if not transaction:
-                self.status_label.configure(text="No transaction found.", text_color="red")
-                messagebox.showerror("Error", "No transaction found in the database.")
-                return
-            transaction_id = transaction[0]
             if not self.db.insert_card_payment(
                     transaction_id,
                     cardholder_name_hashed,
@@ -800,18 +1007,26 @@ class PaymentPage(ctk.CTk):
                     expiry_hashed,
                     cvv_hashed
             ):
+                self.db.conn.rollback()
                 self.status_label.configure(text="Failed to save payment details.", text_color="red")
                 messagebox.showerror("Error", "Failed to save payment details to the database.")
                 return
+
+            self.db.conn.commit()  # Commit transaction
+            self.clear_cart()  # Clear cart after successful payment
+            # Send low stock email if necessary
+            if low_stock_items:
+                self.send_low_stock_email(low_stock_items)
             self.status_label.configure(text="Payment confirmed. Thank you!", text_color="green")
             messagebox.showinfo("Success", "Payment processed successfully!")
             self.payment_completed = True
             self.clear_receipt_content()
             self.view_receipt_button.configure(state="normal")
         except Exception as e:
+            self.db.conn.rollback()
             self.status_label.configure(text="Payment processing failed.", text_color="red")
             messagebox.showerror("Error", f"An error occurred during payment processing: {str(e)}")
 
 if __name__ == "__main__":
-    app = PaymentPage()
+    app = PaymentPage(cashier_id=1)  # Replace with actual CashierID logic
     app.mainloop()
