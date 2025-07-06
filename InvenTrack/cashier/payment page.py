@@ -6,7 +6,8 @@ from datetime import datetime
 import bcrypt
 import re
 import qrcode
-import io
+import os
+import json
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -76,7 +77,7 @@ class PaymentPage(ctk.CTk):
         self.image_refs.append(self.default_image)
 
         try:
-            pil_bg = Image.open("Pictures/background.png")
+            pil_bg = Image.open("cashier/pictures/background.png")
             ctk_bg = ctk.CTkImage(pil_bg, size=(1920, 1080))
             self.image_refs.append(ctk_bg)
             bg_label = ctk.CTkLabel(self, image=ctk_bg, text="")
@@ -246,6 +247,10 @@ class PaymentPage(ctk.CTk):
         elif method == "Cash":
             self.show_cash_payment_fields()
 
+    def _cart_filepath(self):
+        """Return the filename used to persist the cart."""
+        return "cart.json"
+
     def display_receipt(self, parent_frame):
         for widget in parent_frame.winfo_children():
             widget.destroy()
@@ -283,7 +288,7 @@ class PaymentPage(ctk.CTk):
         y_offset += 25
 
         transaction = self.db.get_latest_transaction()
-        transaction_id = transaction[1001] if transaction else "N/A"
+        transaction_id = transaction[0] if transaction else "N/A"
         ctk.CTkLabel(
             scrollable_receipt,
             text=f"Transaction ID: {transaction_id}",
@@ -342,9 +347,28 @@ class PaymentPage(ctk.CTk):
         ).place(x=390, y=0)
         y_offset += 35
 
+        # Load cart from cart.json
+        cart_items = {}
+        cart_filepath = self._cart_filepath()
+        if os.path.exists(cart_filepath):
+            try:
+                with open(cart_filepath, "r", encoding="utf-8") as f:
+                    cart_items = {int(k): int(v) for k, v in json.load(f).items()}
+            except Exception as e:
+                print(f"Failed to load cart.json: {e}")
+                ctk.CTkLabel(
+                    scrollable_receipt,
+                    text="Error: Could not load cart data.",
+                    font=("Arial", 14),
+                    text_color="red",
+                    width=520,
+                    anchor="center"
+                ).pack(pady=(5, 0), fill="x")
+                y_offset += 25
+
         # Items
         self.total_amount = 0.0
-        for product_id, quantity in self.cart_items.items():
+        for product_id, quantity in cart_items.items():
             product = self.db.get_product_details(product_id)
             if product is None:
                 print(f"Warning: Product ID {product_id} not found in database.")
@@ -405,14 +429,37 @@ class PaymentPage(ctk.CTk):
             anchor="center"
         ).pack(pady=(5, 0), fill="x")
         y_offset += 25
+
+        tax_rate = 0.06
+        tax = self.total_amount * tax_rate
+        total_with_tax = self.total_amount + tax
         ctk.CTkLabel(
             scrollable_receipt,
-            text=f"Grand Total: RM {self.total_amount:.2f}",
+            text=f"Subtotal: RM {self.total_amount:.2f}",
+            font=("Arial", 14),
+            text_color="black",
+            width=520,
+            anchor="w"
+        ).pack(pady=(5, 0), padx=10, anchor="w")
+        y_offset += 25
+        ctk.CTkLabel(
+            scrollable_receipt,
+            text=f"Tax (6%): RM {tax:.2f}",
+            font=("Arial", 14),
+            text_color="black",
+            width=520,
+            anchor="w"
+        ).pack(pady=(5, 0), padx=10, anchor="w")
+        y_offset += 25
+        ctk.CTkLabel(
+            scrollable_receipt,
+            text=f"Grand Total: RM {total_with_tax:.2f}",
             font=("Arial", 16, "bold"),
             text_color="black",
             width=520,
             anchor="w"
         ).pack(pady=(5, 10), padx=10, anchor="w")
+        self.total_amount = total_with_tax
 
     def clear_receipt_content(self):
         """Clear the receipt content inside receipt_frame, keeping the frame intact."""
@@ -443,7 +490,7 @@ class PaymentPage(ctk.CTk):
             self.display_receipt(self.receipt_frame)
         else:
             self.clear_receipt_content()
-        self.credit_card_picture = ctk.CTkImage(Image.open("Pictures/credit card logo.png"), size=(500, 100))
+        self.credit_card_picture = ctk.CTkImage(Image.open("cashier/pictures/credit card logo.png"), size=(500, 100))
         self.credit_card_picture_label = ctk.CTkLabel(master=self.content_frame, image=self.credit_card_picture, text="")
         self.credit_card_picture_label.place(x=700, y=10)
         self.cardholder_label = ctk.CTkLabel(self.content_frame, text="Cardholder's Name:", font=("Arial", 24), text_color="black", anchor="w", width=200, height=40)
@@ -485,9 +532,19 @@ class PaymentPage(ctk.CTk):
 
     def show_touchngo_payment_fields(self):
         ctk.CTkLabel(self.content_frame, text="Touch'N Go E-Wallet Payment", font=("Arial", 50), wraplength=500).place(x=900, y=50)
-        self.touch_n_go_logo = ctk.CTkImage(Image.open("Pictures/Touch_'n_Go_eWallet_logo.png"), size=(150, 150))
+        self.touch_n_go_logo = ctk.CTkImage(Image.open("cashier/pictures/Touch_'n_Go_eWallet_logo.png"), size=(150, 150))
         self.touch_n_go_logo_label = ctk.CTkLabel(master=self.content_frame, image=self.touch_n_go_logo, text="")
         self.touch_n_go_logo_label.place(x=720, y=20)
+
+        cart_items = {}
+        cart_filepath = self._cart_filepath()
+        if os.path.exists(cart_filepath):
+            try:
+                with open(cart_filepath, "r", encoding="utf-8") as f:
+                    cart_items = {int(k): int(v) for k, v in json.load(f).items()}
+            except Exception as e:
+                print(f"Failed to load cart.json: {e}")
+                cart_items = {}
 
         # Generate QR code content
         qr_content = "Receipt Details:\n"
@@ -495,7 +552,8 @@ class PaymentPage(ctk.CTk):
         qr_content += f"Transaction ID: {self.db.get_latest_transaction()[0] if self.db.get_latest_transaction() else 'N/A'}\n"
         qr_content += "-" * 40 + "\n"
         qr_content += f"{'Item':<22} {'Qty':>5} {'Price':>10} {'Total':>10}\n"
-        for product_id, quantity in self.cart_items.items():
+        self.total_amount = 0.0
+        for product_id, quantity in cart_items.items():
             product = self.db.get_product_details(product_id)
             if product is None:
                 name = "Unknown Product"
@@ -504,10 +562,17 @@ class PaymentPage(ctk.CTk):
                 name = product[0][:22] + "..." if len(product[0]) > 22 else product[0]
                 price = float(product[1]) if product[1] is not None else 0.0
             total = price * quantity
+            self.total_amount += total
             qr_content += f"{name:<22} {quantity:>5} {price:>10.2f} {total:>10.2f}\n"
+        tax_rate = 0.06
+        tax = self.total_amount * tax_rate
+        total_with_tax = self.total_amount + tax
         qr_content += "-" * 40 + "\n"
-        qr_content += f"Grand Total: RM {self.total_amount:.2f}\n"
+        qr_content += f"Subtotal: RM {self.total_amount:.2f}\n"
+        qr_content += f"Tax (6%): RM {tax:.2f}\n"
+        qr_content += f"Grand Total: RM {total_with_tax:.2f}\n"
         qr_content += "Message: Go back to payment page to confirm payment"
+        self.total_amount = total_with_tax  # Update for payment validation
 
         # Generate QR code
         qr = qrcode.QRCode(
@@ -519,13 +584,9 @@ class PaymentPage(ctk.CTk):
         qr.add_data(qr_content)
         qr.make(fit=True)
         qr_img = qr.make_image(fill_color="black", back_color="white")
-
-        # Convert QR code image to CTkImage
-        qr_img = qr_img.resize((370, 370), Image.LANCZOS)  # Resize to match original placeholder size
+        qr_img = qr_img.resize((370, 370), Image.LANCZOS)
         qr_ctk_image = ctk.CTkImage(light_image=qr_img, size=(370, 370))
-        self.image_refs.append(qr_ctk_image)  # Store reference to prevent garbage collection
-
-        # Display QR code
+        self.image_refs.append(qr_ctk_image)
         qr_label = ctk.CTkLabel(self.content_frame, image=qr_ctk_image, text="")
         qr_label.place(x=860, y=180)
 
