@@ -3,11 +3,14 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk, ImageOps
 from pathlib import Path
-from registerProduct import ProductRegistrationUI
 import sqlite3
 import io
 import qrcode
 import logging
+import subprocess
+from datetime import datetime
+from tkinter import filedialog
+
 
 # Configure logging
 logging.basicConfig(
@@ -190,11 +193,10 @@ class ProductManagementUI(ctk.CTk):
             logging.error(f"Error loading background image: {e}")
             self._bg_image = None
 
-        self.sidebar_visible = True
         nav_cmds = {
-            "Dashboard": lambda: messagebox.showinfo("Dashboard", "Go to Dashboard"),
-            "Register Product": self.switch_to_registration,
-            "Manage Product Details": lambda: None
+            "Dashboard": lambda: self.switch_to_dashboard(),
+            "Register Product": lambda:self.switch_to_registration(),
+            "Manage Products": lambda: None
         }
 
         self.sidebar = Sidebar(self, nav_cmds, self.toggle_sidebar)
@@ -212,28 +214,56 @@ class ProductManagementUI(ctk.CTk):
         self.build_ui()
         self.load_products()
 
-    def switch_to_registration(self):
-        """Switch to product registration page"""
+    def switch_to_dashboard(self):
+        """Switch to product registration page without confirmation popup"""
         try:
-            self.withdraw()  # Hide main window
-            # Create registration window with callback
-            registration_window = ProductRegistrationUI(
-                on_close_callback=self.on_registration_close
-            )
-            # Set close handler
-            registration_window.protocol(
-                "WM_DELETE_WINDOW",
-                lambda: registration_window.on_close()
-            )
+            # Close current window
+            self.destroy()
+
+            # Launch registration page
+            current_dir = Path(__file__).parent
+            dashboard_script = current_dir / "dashboard.py"
+
+            if dashboard_script.exists():
+                subprocess.Popen(['python', str(dashboard_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                app = ProductManagementUI()
+                app.mainloop()
+
+        except Exception as e:
+            logging.error(f"Error switching to dashboard: {e}")
+            messagebox.showerror("Navigation Error", "Failed to open dashboard page")
+            # Reopen dashboard if redirection fails
+            app = ProductManagementUI()
+            app.mainloop()
+
+    def switch_to_registration(self):
+        """Switch to product registration page without confirmation popup"""
+        try:
+            # Close current window
+            self.destroy()
+
+            # Launch registration page
+            current_dir = Path(__file__).parent
+            register_script = current_dir / "registerProduct.py"
+
+            if register_script.exists():
+                subprocess.Popen(['python', str(register_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                app = ProductManagementUI()
+                app.mainloop()
+
+
+
         except Exception as e:
             logging.error(f"Error switching to registration: {e}")
-            messagebox.showerror("Error", f"Could not open registration window: {str(e)}")
-            self.deiconify()  # Show main window again on error
+            messagebox.showerror("Navigation Error", "Failed to open registration page")
+            # Reopen dashboard if redirection fails
+            app = ProductManagementUI()
+            app.mainloop()
 
-    def on_registration_close(self):
-        """Handle when registration window closes"""
-        self.deiconify()  # Show main window
-        self.load_products()  # Refresh product list
 
     def toggle_sidebar(self):
         """Toggle sidebar visibility"""
@@ -899,28 +929,227 @@ class ProductManagementUI(ctk.CTk):
                 logging.error(f"Error updating product image preview: {e}")
 
     def generate_report(self):
-        """Generate a simple report of products"""
+        """Generate a professional inventory report"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+
+                # Get category summary
                 cursor.execute("""
                     SELECT category, COUNT(*) as count, SUM(price*stockQuantity) as total_value 
                     FROM product 
                     GROUP BY category
+                    ORDER BY category
                 """)
+                category_data = cursor.fetchall()
 
-                report = "Product Inventory Report\n\n"
-                report += "Category\t\tCount\tTotal Value (RM)\n"
-                report += "-" * 50 + "\n"
+                # Get overall summary
+                cursor.execute("""
+                    SELECT COUNT(*), SUM(price*stockQuantity), 
+                    SUM(CASE WHEN status = 'Out of Stock' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN status = 'Low Stock' THEN 1 ELSE 0 END)
+                    FROM product
+                """)
+                total_products, total_value, out_of_stock, low_stock = cursor.fetchone()
 
-                for row in cursor.fetchall():
-                    report += f"{row[0]}\t\t{row[1]}\t{row[2]:.2f}\n"
+            # Create report window
+            report_window = ctk.CTkToplevel(self)
+            report_window.title("Inventory Report")
+            report_window.geometry("800x600")
+            report_window.transient(self)
+            report_window.grab_set()
 
-            # Show report in a messagebox (for simplicity)
-            messagebox.showinfo("Inventory Report", report)
+            # Header
+            header_frame = ctk.CTkFrame(report_window, fg_color="#2d3e50")
+            header_frame.pack(fill="x", padx=20, pady=20)
+
+            ctk.CTkLabel(
+                header_frame,
+                text="Inventory Report",
+                font=("Arial", 24, "bold"),
+                text_color="white"
+            ).pack(pady=10)
+
+            # Report date
+            ctk.CTkLabel(
+                header_frame,
+                text=f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                font=("Arial", 14),
+                text_color="#bdc3c7"
+            ).pack(pady=(0, 10))
+
+            # Summary stats
+            stats_frame = ctk.CTkFrame(report_window, fg_color="transparent")
+            stats_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+            stats = [
+                ("Total Products", total_products),
+                ("Total Inventory Value", f"RM{total_value:.2f}"),
+                ("Out of Stock", out_of_stock),
+                ("Low Stock", low_stock)
+            ]
+
+            for i, (label, value) in enumerate(stats):
+                frame = ctk.CTkFrame(stats_frame, fg_color="transparent")
+                frame.grid(row=i // 2, column=i % 2, sticky="w", padx=20, pady=10)
+
+                ctk.CTkLabel(
+                    frame,
+                    text=label + ":",
+                    font=("Arial", 14, "bold"),
+                    width=150,
+                    anchor="w"
+                ).pack(side="left")
+
+                ctk.CTkLabel(
+                    frame,
+                    text=str(value),
+                    font=("Arial", 14),
+                    width=100,
+                    anchor="w"
+                ).pack(side="left")
+
+            # Category table
+            table_frame = ctk.CTkFrame(report_window, fg_color="transparent")
+            table_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+            # Configure table_frame as a grid
+            table_frame.grid_columnconfigure(0, weight=1)  # Category column
+            table_frame.grid_columnconfigure(1, weight=0)  # Items column
+            table_frame.grid_columnconfigure(2, weight=0)  # Total Value column
+
+            # Table header
+            header_frame = ctk.CTkFrame(table_frame, fg_color="#e0e0e0")
+            header_frame.grid(row=0, column=0, columnspan=3, sticky="ew")
+
+            headers = ["Category", "Items", "Total Value"]
+            column_widths = [400, 150, 200]  # Adjust these values as needed
+
+            for col, (header, width) in enumerate(zip(headers, column_widths)):
+                ctk.CTkLabel(
+                    header_frame,
+                    text=header,
+                    font=("Arial", 14, "bold"),
+                    width=width,
+                    anchor="w",
+                    padx=10
+                ).grid(row=0, column=col, sticky="w")
+
+            # Table rows with alternating colors
+            for i, (category, count, value) in enumerate(category_data):
+                row_idx = i + 1
+                row_color = "#ffffff" if i % 2 == 0 else "#f5f5f5"
+
+                # Create a frame for the entire row
+                row_frame = ctk.CTkFrame(table_frame, fg_color=row_color)
+                row_frame.grid(row=row_idx, column=0, columnspan=3, sticky="ew")
+
+                # Configure columns within the row frame
+                row_frame.grid_columnconfigure(0, weight=1)
+                row_frame.grid_columnconfigure(1, weight=0)
+                row_frame.grid_columnconfigure(2, weight=0)
+
+                # Category name
+                ctk.CTkLabel(
+                    row_frame,
+                    text=category,
+                    font=("Arial", 14),
+                    anchor="w",
+                    padx=10,
+                    width=column_widths[0]
+                ).grid(row=0, column=0, sticky="w")
+
+                # Item count
+                ctk.CTkLabel(
+                    row_frame,
+                    text=str(count),
+                    font=("Arial", 14),
+                    anchor="w",
+                    padx=10,
+                    width=column_widths[1]
+                ).grid(row=0, column=1, sticky="w")
+
+                # Total value
+                ctk.CTkLabel(
+                    row_frame,
+                    text=f"RM{value:.2f}",
+                    font=("Arial", 14),
+                    anchor="w",
+                    padx=10,
+                    width=column_widths[2]
+                ).grid(row=0, column=2, sticky="w")
+
+            # Export button
+            btn_frame = ctk.CTkFrame(report_window, fg_color="transparent")
+            btn_frame.pack(fill="x", padx=20, pady=20)
+
+            ctk.CTkButton(
+                btn_frame,
+                text="Export to Text File",
+                width=200,
+                height=40,
+                font=("Arial", 16),
+                fg_color="#27ae60",
+                hover_color="#219653",
+                command=lambda: self.export_report(
+                    category_data,
+                    total_products,
+                    total_value,
+                    out_of_stock,
+                    low_stock
+                )
+            ).pack(side="right")
+
         except Exception as e:
             logging.error(f"Error generating report: {e}")
             messagebox.showerror("Error", "Could not generate report")
+
+    def export_report(self, category_data, total_products, total_value, out_of_stock, low_stock):
+        """Export the report to a text file"""
+        try:
+            # Get save file location
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[("Text Files", "*.txt")],
+                title="Save Report As"
+            )
+
+            if not file_path:
+                return  # User canceled
+
+            with open(file_path, "w") as f:
+                # Write header
+                f.write("=" * 50 + "\n")
+                f.write("INVENTORY REPORT\n".center(50) + "\n")
+                f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+                f.write("=" * 50 + "\n\n")
+
+                # Write summary
+                f.write("SUMMARY\n")
+                f.write("-" * 50 + "\n")
+                f.write(f"Total Products: {total_products}\n")
+                f.write(f"Total Inventory Value: RM{total_value:.2f}\n")
+                f.write(f"Out of Stock Items: {out_of_stock}\n")
+                f.write(f"Low Stock Items: {low_stock}\n")
+                f.write("\n")
+
+                # Write category details
+                f.write("CATEGORY DETAILS\n")
+                f.write("-" * 50 + "\n")
+                f.write(f"{'Category':<30}{'Items':>10}{'Total Value':>15}\n")
+                f.write("-" * 50 + "\n")
+
+                for category, count, value in category_data:
+                    f.write(f"{category:<30}{count:>10}{f'RM{value:.2f}':>15}\n")
+
+                f.write("-" * 50 + "\n")
+                f.write(f"{'TOTAL':<30}{total_products:>10}{f'RM{total_value:.2f}':>15}\n")
+                f.write("=" * 50 + "\n")
+
+            messagebox.showinfo("Export Successful", f"Report saved to:\n{file_path}")
+        except Exception as e:
+            logging.error(f"Error exporting report: {e}")
+            messagebox.showerror("Export Error", "Failed to save report")
 
 
 if __name__ == '__main__':
