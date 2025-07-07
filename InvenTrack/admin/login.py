@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 from tkinter import Tk, Canvas, Entry, Button, PhotoImage, messagebox
 from PIL import Image, ImageTk
 import sqlite3
+import os
 
 # Import RegistrationForm from your register file
 from register import RegistrationForm
@@ -78,8 +80,10 @@ class LoginForm:
 
         self.login_button_img = PhotoImage(file=self.rel_asset("LoginButton.png"))
         self.login_button = self.canvas.create_image(1100.0, 800.0, anchor="nw", image=self.login_button_img)
-        self.canvas.tag_bind(self.login_button, "<ButtonPress-1>", lambda event: self.canvas.move(self.login_button, 1, 1))
-        self.canvas.tag_bind(self.login_button, "<ButtonRelease-1>", lambda event: [self.canvas.move(self.login_button, -1, -1), self.submit()])
+        self.canvas.tag_bind(self.login_button, "<ButtonPress-1>",
+                             lambda event: self.canvas.move(self.login_button, 1, 1))
+        self.canvas.tag_bind(self.login_button, "<ButtonRelease-1>",
+                             lambda event: [self.canvas.move(self.login_button, -1, -1), self.submit()])
 
         # Clickable register text
         self.register_text = self.canvas.create_text(1020.0, 720.0, anchor="nw",
@@ -92,6 +96,38 @@ class LoginForm:
         self.password.config(show='' if self.password_visible else '*')
         self.toggle_password_btn.config(image=self.show_image if self.password_visible else self.hide_image)
 
+    def save_user_session(self, user_data):
+        """Save user data to a JSON file for session management"""
+        session_path = self.output_path.parent / "user_session.json"
+        with open(session_path, 'w') as f:
+            json.dump(user_data, f)
+
+    def redirect_to_dashboard(self, role):
+        """Redirect to appropriate dashboard based on user role"""
+        self.root.destroy()  # Close the login window
+
+        try:
+            if role.lower() == "admin":
+                from admindashboard import AdminDashboardUI
+                app = AdminDashboardUI()
+            elif role.lower() == "manager":
+                from managerdashboard import ManagerDashboard
+                app = ManagerDashboard()
+            elif role.lower() == "cashier":
+                from cashierdashboard import CashierDashboard
+                app = CashierDashboard()
+            else:
+                raise ValueError("Unknown user role")
+
+            app.mainloop()
+
+        except ImportError as e:
+            messagebox.showerror("Error", f"Failed to load dashboard: {e}")
+            # Fallback to login
+            new_root = ctk.CTk()
+            LoginForm(new_root)
+            new_root.mainloop()
+
     def submit(self):
         email = self.email.get().strip()
         password = self.password.get().strip()
@@ -102,8 +138,22 @@ class LoginForm:
 
         self.cursor.execute("SELECT * FROM User WHERE Email=? AND Password=?", (email, password))
         user = self.cursor.fetchone()
+
         if user:
-            messagebox.showinfo("Login Success", f"Welcome {user[1]} ({user[4]})!")
+            # Create user data dictionary
+            user_data = {
+                "UserID": user[0],
+                "Username": user[1],
+                "Email": user[2],
+                "Role": user[4],
+                "PhoneNumber": user[5]
+            }
+
+            # Save user session
+            self.save_user_session(user_data)
+
+            # Redirect to appropriate dashboard
+            self.redirect_to_dashboard(user[4])
         else:
             messagebox.showerror("Login Failed", "Invalid email or password.")
 
