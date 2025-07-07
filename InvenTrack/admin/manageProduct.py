@@ -222,7 +222,7 @@ class ProductManagementUI(ctk.CTk):
 
             # Launch registration page
             current_dir = Path(__file__).parent
-            dashboard_script = current_dir / "dashboard.py"
+            dashboard_script = current_dir / "admindashboard.py"
 
             if dashboard_script.exists():
                 subprocess.Popen(['python', str(dashboard_script)])
