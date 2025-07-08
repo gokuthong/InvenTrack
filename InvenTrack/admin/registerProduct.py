@@ -24,7 +24,7 @@ class Sidebar(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text="InvenTrack",
-            font=("Segoe UI", 28, "bold"),
+            font=("Acumin Pro", 28, "bold"),
             text_color="#fff"
         ).place(x=20, y=20)
 
@@ -42,7 +42,7 @@ class Sidebar(ctk.CTkFrame):
                 fg_color="#34495E" if is_current else "transparent",
                 hover_color="#3E5870" if is_current else "#4A6374",
                 text_color="#FFFFFF",
-                font=("Segoe UI", 18.5),
+                font=("Acumin Pro", 18.5),
                 command=cmd
             )
             btn.place(x=10, y=y)
@@ -59,13 +59,13 @@ class Sidebar(ctk.CTkFrame):
             fg_color="transparent",
             hover_color="#f0f8ff",
             text_color="#fff",
-            font=("Segoe UI", 18.5),
+            font=("Acumin Pro", 18.5),
             command=lambda: print("Logging out...")
         ).place(x=10, y=950)
 
 
 class Header(ctk.CTkFrame):
-    def __init__(self, parent, title, sidebar_toggle_callback):
+    def __init__(self, parent, title, sidebar_toggle_callback, profile_command=None):
         super().__init__(parent, fg_color="#2d3e50", height=55)
         self.pack(fill="x", pady=(0, 20), padx=0)
 
@@ -79,7 +79,7 @@ class Header(ctk.CTkFrame):
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI", 20),
+            font=("Acumin Pro", 20),
             command=sidebar_toggle_callback
         )
         self.toggle_btn.place(x=12, y=6)
@@ -98,7 +98,7 @@ class Header(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(
             self,
             text=title,
-            font=("Segoe UI", 25),
+            font=("Acumin Pro", 25),
             text_color="#fff"
         )
         self.title_label.place(x=115, y=10)
@@ -113,8 +113,23 @@ class Header(ctk.CTkFrame):
             fg_color="transparent",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI", 20)
-        ).place(x=1880, y=10)
+            font=("Acumin Pro", 20)
+        ).place(x=1880, y=10)  # Positioned at top-right corner
+
+        # Profile button
+        self.profile_btn = ctk.CTkButton(
+            self,
+            text="👤",
+            width=35,
+            height=35,
+            corner_radius=0,
+            fg_color="#2d3e50",
+            hover_color="#1a252f",
+            text_color="#fff",
+            font=("Acumin Pro", 20),
+            command=profile_command
+        )
+        self.profile_btn.place(x=1700, y=10)
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -237,9 +252,34 @@ class ProductRegistrationUI(ctk.CTk):
         bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
         # Create header with new polished design
-        self.header = Header(self.main, "Product Registration", self.toggle_sidebar)
+        self.header = Header(self.main, "Product Registration", self.toggle_sidebar, self.goto_profile)
 
         self.build_registration_form()
+
+    def goto_profile(self):
+        """Close current window and open Profile page"""
+        try:
+            # Close current window
+            self.destroy()
+
+            # Launch profile page
+            current_dir = Path(__file__).parent
+            profile_script = current_dir / "Profile page.py"
+
+            if profile_script.exists():
+                subprocess.Popen(['python', str(profile_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                messagebox.showerror("Error", "Profile page not found!")
+                app = ProductRegistrationUI()
+                app.mainloop()
+
+        except Exception as e:
+            logging.error(f"Error switching to profile: {e}")
+            messagebox.showerror("Navigation Error", "Failed to open profile page")
+            # Reopen dashboard if redirection fails
+            app = ProductRegistrationUI()
+            app.mainloop()
 
     def toggle_sidebar(self):
         """Toggle sidebar visibility"""
@@ -299,8 +339,8 @@ class ProductRegistrationUI(ctk.CTk):
 
     def build_registration_form(self):
         """Build the product registration form"""
-        label_font = ("Segoe UI", 26)
-        input_font = ("Segoe UI", 24)
+        label_font = ("Acumin Pro", 26)
+        input_font = ("Acumin Pro", 24)
 
         # Main form frame
         self.form_frame = ctk.CTkFrame(self.main, fg_color="#ffffff", corner_radius=20, width=1400, height=900)
@@ -311,7 +351,7 @@ class ProductRegistrationUI(ctk.CTk):
         left_frame = ctk.CTkFrame(self.form_frame, fg_color="#ffffff", corner_radius=0)
         left_frame.place(relx=0.04, rely=0.05)
 
-        ctk.CTkLabel(left_frame, text="Add Products Here", font=("Segoe UI", 32, "bold"),
+        ctk.CTkLabel(left_frame, text="Add Products Here", font=("Acumin Pro", 32, "bold"),
                      fg_color="#ffffff").grid(row=0, column=0, columnspan=2, pady=(0, 20))
 
         # Form fields
@@ -335,12 +375,12 @@ class ProductRegistrationUI(ctk.CTk):
             widget.grid(row=idx, column=1, pady=(28, 28), padx=12)
 
         # Buttons
-        ctk.CTkButton(left_frame, text="Add New Category", font=("Segoe UI", 20),
-                      fg_color="light grey", text_color="white", width=300, height=40,
+        ctk.CTkButton(left_frame, text="Add New Category", font=("Acumin Pro", 20),
+                      fg_color="#808080", hover_color="#696969", text_color="white", width=300, height=40,
                       command=self.add_new_category).grid(row=5, column=0, columnspan=2, pady=(50, 10))
 
         ctk.CTkButton(left_frame, text="Add Item", font=input_font,
-                      fg_color="#28a745", text_color="white", height=45, width=300,
+                      fg_color="#008000", hover_color="#006400", text_color="white", height=45, width=300,
                       corner_radius=10, command=self.register_product).grid(
             row=6, column=0, columnspan=2, pady=(20, 10))
 
@@ -356,11 +396,11 @@ class ProductRegistrationUI(ctk.CTk):
         self.image_label.pack(pady=(10, 10))
 
         # Image upload button
-        tk.Button(right_frame, text="Add Product Image", font=("Segoe UI", 12),
+        tk.Button(right_frame, text="Add Product Image", font=("Acumin Pro", 12),
                   command=self.upload_product_image).pack()
 
         # QR Code section
-        self.qr_text_label = tk.Label(right_frame, text="Product QR Code", font=("Segoe UI", 15, "bold"), bg="#ffffff")
+        self.qr_text_label = tk.Label(right_frame, text="Product QR Code", font=("Acumin Pro", 15, "bold"), bg="#ffffff")
         self.qr_text_label.pack(pady=(60, 5))
         self.qr_label = tk.Label(right_frame, bg="#ffffff")
         self.qr_label.pack()
@@ -447,8 +487,8 @@ class ProductRegistrationUI(ctk.CTk):
         popup.geometry("300x150")
         popup.grab_set()
 
-        tk.Label(popup, text="Enter New Category:", font=("Segoe UI", 12)).pack(pady=10)
-        entry = tk.Entry(popup, font=("Segoe UI", 12))
+        tk.Label(popup, text="Enter New Category:", font=("Acumin Pro", 12)).pack(pady=10)
+        entry = tk.Entry(popup, font=("Acumin Pro", 12))
         entry.pack(pady=5)
 
         def save_category():
@@ -471,7 +511,7 @@ class ProductRegistrationUI(ctk.CTk):
             else:
                 messagebox.showerror("Input Error", "Category name cannot be empty.")
 
-        tk.Button(popup, text="Save", font=("Segoe UI", 12), command=save_category).pack(pady=10)
+        tk.Button(popup, text="Save", font=("Acumin Pro", 12), command=save_category).pack(pady=10)
 
     def on_close(self):
         """Handle window close event"""
