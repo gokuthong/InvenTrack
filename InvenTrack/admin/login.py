@@ -3,6 +3,7 @@ from pathlib import Path
 from tkinter import Tk, Canvas, Entry, Button, PhotoImage, messagebox
 from PIL import Image, ImageTk
 import sqlite3
+import customtkinter as ctk
 import os
 
 # Import RegistrationForm from your register file
@@ -96,11 +97,11 @@ class LoginForm:
         self.password.config(show='' if self.password_visible else '*')
         self.toggle_password_btn.config(image=self.show_image if self.password_visible else self.hide_image)
 
-    def save_user_session(self, user_data):
-        """Save user data to a JSON file for session management"""
+    def save_user_session(self, user_id):
+        """Save only user ID to a JSON file for session management"""
         session_path = self.output_path.parent / "user_session.json"
         with open(session_path, 'w') as f:
-            json.dump(user_data, f)
+            json.dump({"UserID": user_id}, f)
 
     def redirect_to_dashboard(self, role):
         """Redirect to appropriate dashboard based on user role"""
@@ -140,17 +141,8 @@ class LoginForm:
         user = self.cursor.fetchone()
 
         if user:
-            # Create user data dictionary
-            user_data = {
-                "UserID": user[0],
-                "Username": user[1],
-                "Email": user[2],
-                "Role": user[4],
-                "PhoneNumber": user[5]
-            }
-
-            # Save user session
-            self.save_user_session(user_data)
+            # Save only the user ID in session
+            self.save_user_session(user[0])
 
             # Redirect to appropriate dashboard
             self.redirect_to_dashboard(user[4])
