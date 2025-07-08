@@ -213,8 +213,8 @@ class ProductRegistrationUI(ctk.CTk):
         self.on_close_callback = on_close_callback
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.title("Product Registration")
-        self.geometry("1920x1080")
-        self.attributes('-fullscreen', True)
+        width, height = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"{width}x{height}+0+0")
         self.configure(fg_color="#f4f7fa")
 
         # Initialize paths and database
