@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
-class AddCashierPageDatabase:
+class AddAdminCashierPageDatabase:
     def __init__(self, db_file="inventoryproject.db"):
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
@@ -24,7 +24,7 @@ class AddCashierPageDatabase:
                     Username TEXT NOT NULL UNIQUE,
                     Email TEXT NOT NULL UNIQUE,
                     Password TEXT NOT NULL,
-                    Role TEXT DEFAULT 'Cashier',
+                    Role TEXT NOT NULL,
                     PhoneNumber TEXT NOT NULL
                 )
             """)
@@ -32,12 +32,12 @@ class AddCashierPageDatabase:
         except sqlite3.Error as e:
             print(f"Database error: {e}")
 
-    def add_cashier(self, username, email, password, phone_number):
+    def add_user(self, username, email, password, phone_number, role):
         try:
             self.cursor.execute("""
                 INSERT INTO User (Username, Email, Password, Role, PhoneNumber)
-                VALUES (?, ?, ?, 'Cashier', ?)
-            """, (username, email, password, phone_number))
+                VALUES (?, ?, ?, ?, ?)
+            """, (username, email, password, role, phone_number))
             self.conn.commit()
             return True
         except sqlite3.Error as e:
@@ -52,12 +52,12 @@ class AddCashierPageDatabase:
     def close(self):
         self.conn.close()
 
-class AddCashierPage(ctk.CTk):
+class AddAdminCashierPage(ctk.CTk):
     def __init__(self, previous_window=None):
         super().__init__()
-        self.db = AddCashierPageDatabase()
+        self.db = AddAdminCashierPageDatabase()
         self.previous_window = previous_window
-        self.title("Add Cashier")
+        self.title("Add New Admin or Cashier")
         self.geometry("1920x1080")
         self.configure(fg_color="white")
         self.resizable(True, True)
@@ -78,7 +78,7 @@ class AddCashierPage(ctk.CTk):
 
         self.sidebar_expanded = False
         self.sidebar_width = 180
-        self.current_page = "Add Cashier"
+        self.current_page = "Add New Admin or Cashier"
 
         self._create_header()
         self._create_sidebar()
@@ -100,7 +100,7 @@ class AddCashierPage(ctk.CTk):
                                                                                                               y=20)
         self.sidebar_buttons = {}
         y = 80
-        for name in ["Add Cashier"]:
+        for name in ["Add New Admin\nor Cashier"]:
             is_current = (name == self.current_page)
             btn = ctk.CTkButton(self.sidebar, text=name, width=160, height=50, corner_radius=10,
                                 fg_color="#34495E" if is_current else "transparent",
@@ -184,10 +184,10 @@ class AddCashierPage(ctk.CTk):
             expand()
 
     def show_add_cashier(self):
-        self.current_page = "Add Cashier"
+        self.current_page = "Add New Admin or Cashier"
         self.title_label.configure(text=self.current_page)
         for name, btn in self.sidebar_buttons.items():
-            if name == "Add Cashier":
+            if name == "AAdd New Admin or Cashier":
                 btn.configure(fg_color="#34495E", hover_color="#3E5870")
             else:
                 btn.configure(fg_color="transparent", hover_color="#4A6374")
@@ -209,11 +209,11 @@ class AddCashierPage(ctk.CTk):
 
     def create_main_add_cashier_frame(self):
         # Form frame with increased size to better display contents
-        self.form_frame = ctk.CTkFrame(self, fg_color="#fff", bg_color="#fff", width=1000, height=700)  # Increased width to 800, height to 700
+        self.form_frame = ctk.CTkFrame(self, fg_color="#fff", bg_color="#fff", width=1000, height=750)  # Increased width to 800, height to 700
         x_off = self.sidebar_width if self.sidebar_expanded else 0
         self.form_frame.place(x=300 + x_off, y=80)
 
-        ctk.CTkLabel(self.form_frame, text="Add New Cashier", font=("Trebuchet MS", 50), text_color="light blue").place(x=300, y=50)  # Centered title
+        ctk.CTkLabel(self.form_frame, text="Add New Admin or Cashier", font=("Trebuchet MS", 50), text_color="#2d3e50").place(x=180, y=40)  # Centered title
 
         # Username
         self.username_label = ctk.CTkLabel(self.form_frame, text="Username:", font=("Arial", 30), text_color="#000")
@@ -251,9 +251,16 @@ class AddCashierPage(ctk.CTk):
         self.phone_entry = ctk.CTkEntry(self.form_frame, font=("Arial", 30), width=500, height=50)  # Increased width
         self.phone_entry.place(x=340, y=385)
 
-        button_y = 500
-        self.add_button = ctk.CTkButton(self.form_frame, text="Add Cashier", font=("Arial", 22), width=180, height=50,
-                                        command=self.add_cashier)
+        self.role_label = ctk.CTkLabel(self.form_frame, text="Role:", font=("Arial", 30), text_color="#000")
+        self.role_label.place(x=100, y=470)
+        self.role_combobox = ctk.CTkComboBox(self.form_frame, font=("Arial", 30), dropdown_font=("Arial",20), width=500, height=45,
+                                             values=["Cashier", "Admin"])
+        self.role_combobox.set("")
+        self.role_combobox.place(x=340, y=465)
+
+        button_y = 560
+        self.add_button = ctk.CTkButton(self.form_frame, text="Add", font=("Arial", 22), width=180, height=50,
+                                        command=self.add_user)
         self.add_button.place(x=220, y=button_y)
 
         self.clear_button = ctk.CTkButton(self.form_frame, text="Clear", font=("Arial", 22), width=180, height=50,
@@ -264,21 +271,27 @@ class AddCashierPage(ctk.CTk):
                                          command=self.back)
         self.back_button.place(x=620, y=button_y)
 
-    def add_cashier(self):
+    def add_user(self):
         username = self.username_entry.get().strip()
         email = self.email_entry.get().strip()
         password = self.password_entry.get().strip()
         phone_number = self.phone_entry.get().strip()
+        role = self.role_combobox.get().strip().title()
 
         # Duplicate checks
-        if self.db.is_duplicate("Username", username):
-            messagebox.showerror("Error", "Username already exists.")
-            return
-        if self.db.is_duplicate("Email", email):
-            messagebox.showerror("Error", "Email already exists.")
-            return
-        if self.db.is_duplicate("PhoneNumber", phone_number):
-            messagebox.showerror("Error", "Phone number already exists.")
+        if self.db.is_duplicate(username, email, phone_number):
+            # Determine which field is duplicated
+            self.db.cursor.execute(
+                "SELECT Username, Email, PhoneNumber FROM User WHERE Username=? OR Email=? OR PhoneNumber=?",
+                (username, email, phone_number))
+            existing = self.db.cursor.fetchone()
+            if existing:
+                if existing[0] == username:
+                    messagebox.showerror("Error", "Username already exists.")
+                elif existing[1] == email:
+                    messagebox.showerror("Error", "Email already exists.")
+                elif existing[2] == phone_number:
+                    messagebox.showerror("Error", "Phone number already exists.")
             return
 
         # Validation checks
@@ -322,15 +335,20 @@ class AddCashierPage(ctk.CTk):
             messagebox.showerror("Error", "Invalid phone number format. Use 10-15 digits, optionally starting with +.")
             return
 
-        if self.db.add_cashier(username, email, password, phone_number):
-            messagebox.showinfo("Success", "Cashier added successfully!")
-            self.send_verification_email(email, username)
+        valid_roles = ["Cashier", "Admin"]
+        if role not in valid_roles:
+            messagebox.showerror("Error", "Please select a valid role (Cashier or Admin).")
+            return
+
+        if self.db.add_user(username, email, password, phone_number, role):
+            messagebox.showinfo("Success", f"{role} added successfully!")
+            self.send_verification_email(email, username, role)
             self.username_entry.delete(0, 'end')
             self.email_entry.delete(0, 'end')
             self.password_entry.delete(0, 'end')
             self.phone_entry.delete(0, 'end')
         else:
-            messagebox.showerror("Error", "Failed to add cashier. Username or email may already exist.")
+            messagebox.showerror("Error", "Failed to add new admin/cashier. Username or email may already exist.")
 
     def clear_fields(self):
         self.username_entry.delete(0, 'end')
@@ -340,19 +358,19 @@ class AddCashierPage(ctk.CTk):
         if not self.password_visible:
             self.password_entry.configure(show="*")  # ensure it's reset
 
-    def send_verification_email(self, recipient_email, username):
-        sender_email = "youremail@example.com"
-        sender_password = "your_app_password"
+    def send_verification_email(self, recipient_email, username,role):
+        sender_email = "zclau4321@gmail.com"
+        sender_password = "raqc juni yrvu rmov"
 
         message = MIMEMultipart("alternative")
-        message["Subject"] = "Cashier Account Verification"
+        message["Subject"] = "New Admin/Cashier Account Verification"
         message["From"] = sender_email
         message["To"] = recipient_email
 
         text = f"""\
     Hi {username},
 
-    Your account has been successfully created as a cashier.
+    f"Your account has been successfully created as a {role.lower()}."
     This is a confirmation email from InvenTrack.
 
     Thank you,
@@ -362,7 +380,7 @@ class AddCashierPage(ctk.CTk):
     <html>
       <body>
         <p>Hi {username},<br><br>
-           Your account has been <b>successfully created</b> as a cashier.<br><br>
+           Your account has been <b>successfully created</b> as a {role.lower()}.<br><br>
            This is a confirmation email from <b>InvenTrack</b>.<br><br>
            Thank you,<br>
            <b>InvenTrack Team</b>
@@ -400,5 +418,5 @@ class AddCashierPage(ctk.CTk):
         self.db.close()
 
 if __name__ == "__main__":
-    app = AddCashierPage()
+    app = AddAdminCashierPage()
     app.mainloop()
