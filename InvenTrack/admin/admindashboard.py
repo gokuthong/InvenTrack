@@ -426,8 +426,8 @@ class AdminDashboardUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Admin Dashboard")
-        self.geometry("1920x1080")
-        self.attributes('-fullscreen', True)
+        width, height = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"{width}x{height}+0+0")
         self.configure(fg_color="#f4f7fa")
         self.output_path = Path(__file__).parent
         self.db_path = self.output_path.parent / "inventoryproject.db"
