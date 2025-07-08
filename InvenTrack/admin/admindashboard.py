@@ -55,7 +55,7 @@ class CustomMessageBox(ctk.CTkToplevel):
         message_label = ctk.CTkLabel(
             content_frame,
             text=message,
-            font=("Segoe UI", 18),
+            font=("Acumin Pro", 18),
             wraplength=width - 80,
             justify="center"
         )
@@ -72,7 +72,7 @@ class CustomMessageBox(ctk.CTkToplevel):
                 text=btn_text,
                 width=120,
                 height=40,
-                font=("Segoe UI", 16, "bold"),
+                font=("Acumin Pro", 16, "bold"),
                 command=lambda t=btn_text: self.on_button_click(t)
             )
             btn.grid(row=0, column=i, padx=10)
@@ -196,7 +196,7 @@ class Sidebar(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text="InvenTrack",
-            font=("Segoe UI", 28, "bold"),
+            font=("Acumin Pro", 28, "bold"),
             text_color="#fff"
         ).place(x=20, y=20)
 
@@ -214,7 +214,7 @@ class Sidebar(ctk.CTkFrame):
                 fg_color="#34495E" if is_current else "transparent",
                 hover_color="#3E5870" if is_current else "#4A6374",
                 text_color="#FFFFFF",
-                font=("Segoe UI", 18.5),
+                font=("Acumin Pro", 18.5),
                 command=cmd
             )
             btn.place(x=10, y=y)
@@ -231,13 +231,13 @@ class Sidebar(ctk.CTkFrame):
             fg_color="transparent",
             hover_color="#f0f8ff",
             text_color="#fff",
-            font=("Segoe UI", 18.5),
+            font=("Acumin Pro", 18.5),
             command=lambda: print("Logging out...")
         ).place(x=10, y=950)
 
 
 class Header(ctk.CTkFrame):
-    def __init__(self, parent, title, sidebar_toggle_callback):
+    def __init__(self, parent, title, sidebar_toggle_callback, profile_command=None):
         super().__init__(parent, fg_color="#2d3e50", height=55)
         self.pack(fill="x", pady=(0, 20), padx=0)
 
@@ -251,7 +251,7 @@ class Header(ctk.CTkFrame):
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI", 20),
+            font=("Acumin Pro", 20),
             command=sidebar_toggle_callback
         )
         self.toggle_btn.place(x=12, y=6)
@@ -270,7 +270,7 @@ class Header(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(
             self,
             text=title,
-            font=("Segoe UI", 25),
+            font=("Acumin Pro", 25),
             text_color="#fff"
         )
         self.title_label.place(x=115, y=10)
@@ -285,8 +285,23 @@ class Header(ctk.CTkFrame):
             fg_color="transparent",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI", 20)
+            font=("Acumin Pro", 20)
         ).place(x=1880, y=10)  # Positioned at top-right corner
+
+        # Profile button
+        self.profile_btn = ctk.CTkButton(
+            self,
+            text="👤",
+            width=35,
+            height=35,
+            corner_radius=0,
+            fg_color="#2d3e50",
+            hover_color="#1a252f",
+            text_color="#fff",
+            font=("Acumin Pro", 20),
+            command=profile_command
+        )
+        self.profile_btn.place(x=1700, y=10)
 
 
 class SummaryCard(ctk.CTkFrame):
@@ -313,7 +328,7 @@ class SummaryCard(ctk.CTkFrame):
         title_label = ctk.CTkLabel(
             content_frame,
             text=title,
-            font=("Segoe UI", 18),
+            font=("Acumin Pro", 18),
             text_color="#7f8c8d",
             anchor="w"
         )
@@ -322,7 +337,7 @@ class SummaryCard(ctk.CTkFrame):
         self.value_label = ctk.CTkLabel(
             content_frame,
             text=initial_value,
-            font=("Segoe UI", 32, "bold"),
+            font=("Acumin Pro", 32, "bold"),
             text_color="#2c3e50",
             anchor="w"
         )
@@ -341,7 +356,7 @@ class SummaryCard(ctk.CTkFrame):
             self.trend_label = ctk.CTkLabel(
                 trend_frame,
                 text=trend,
-                font=("Segoe UI", 14),
+                font=("Acumin Pro", 14),
                 text_color=trend_color
             )
             self.trend_label.pack(side="left")
@@ -380,17 +395,17 @@ class LowStockItem(ctk.CTkFrame):
         name_frame = ctk.CTkFrame(details_frame, fg_color="transparent")
         name_frame.pack(fill="x", pady=(0, 5))
 
-        ctk.CTkLabel(name_frame, text=product_name, font=("Segoe UI", 16, "bold"), anchor="w").pack(side="left")
-        ctk.CTkLabel(name_frame, text=category, font=("Segoe UI", 14), text_color="#7f8c8d", anchor="w").pack(
+        ctk.CTkLabel(name_frame, text=product_name, font=("Acumin Pro", 16, "bold"), anchor="w").pack(side="left")
+        ctk.CTkLabel(name_frame, text=category, font=("Acumin Pro", 14), text_color="#7f8c8d", anchor="w").pack(
             side="right", padx=10)
 
         # Stock information
         stock_frame = ctk.CTkFrame(details_frame, fg_color="transparent")
         stock_frame.pack(fill="x")
 
-        ctk.CTkLabel(stock_frame, text=f"Current Stock: {current_stock}", font=("Segoe UI", 14), anchor="w").pack(
+        ctk.CTkLabel(stock_frame, text=f"Current Stock: {current_stock}", font=("Acumin Pro", 14), anchor="w").pack(
             side="left")
-        ctk.CTkLabel(stock_frame, text=status, font=("Segoe UI", 14, "bold"), text_color=status_color, anchor="w").pack(
+        ctk.CTkLabel(stock_frame, text=status, font=("Acumin Pro", 14, "bold"), text_color=status_color, anchor="w").pack(
             side="right", padx=10)
 
         # Restock button
@@ -399,7 +414,7 @@ class LowStockItem(ctk.CTkFrame):
             text="Restock",
             width=100,
             height=30,
-            font=("Segoe UI", 15),
+            font=("Acumin Pro", 15),
             fg_color="#27ae60",
             hover_color="#219653",
             command=on_restock
@@ -454,9 +469,34 @@ class AdminDashboardUI(ctk.CTk):
             bg_label = tk.Label(self.main, image=self._bg_image)
             bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-        self.header = Header(self.main, "Admin Dashboard", self.toggle_sidebar)
+        self.header = Header(self.main, "Admin Dashboard", self.toggle_sidebar, self.goto_profile)
         self.build_ui()
         self.load_dashboard_data()
+
+    def goto_profile(self):
+        """Close current window and open Profile page"""
+        try:
+            # Close current window
+            self.destroy()
+
+            # Launch profile page
+            current_dir = Path(__file__).parent
+            profile_script = current_dir / "Profile page.py"
+
+            if profile_script.exists():
+                subprocess.Popen(['python', str(profile_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                messagebox.showerror("Error", "Profile page not found!")
+                app = AdminDashboardUI()
+                app.mainloop()
+
+        except Exception as e:
+            logging.error(f"Error switching to profile: {e}")
+            messagebox.showerror("Navigation Error", "Failed to open profile page")
+            # Reopen dashboard if redirection fails
+            app = AdminDashboardUI()
+            app.mainloop()
 
     def switch_to_registration(self):
         """Switch to product registration page without confirmation popup"""
@@ -512,10 +552,10 @@ class AdminDashboardUI(ctk.CTk):
         welcome_frame.grid(row=0, column=0, sticky="ew", padx=20, pady=(0, 20))
 
         ctk.CTkLabel(welcome_frame, text="Welcome Back, Admin!",
-                     font=("Segoe UI", 36, "bold"), text_color="#2c3e50").pack(side="left")
+                     font=("Acumin Pro", 36, "bold"), text_color="#2c3e50").pack(side="left")
 
         ctk.CTkLabel(welcome_frame, text="Here's your inventory overview",
-                     font=("Segoe UI", 23), text_color="#7f8c8d").pack(side="left", padx=20)
+                     font=("Acumin Pro", 23), text_color="#7f8c8d").pack(side="left", padx=20)
 
         # Summary cards
         cards_frame = ctk.CTkFrame(self.container, fg_color="transparent")
@@ -562,7 +602,7 @@ class AdminDashboardUI(ctk.CTk):
         chart_header.grid(row=0, column=0, sticky="ew", padx=15, pady=5)  # Reduced padding
 
         ctk.CTkLabel(chart_header, text="Inventory Distribution",
-                     font=("Segoe UI", 20, "bold"), text_color="#2c3e50").pack(side="left")
+                     font=("Acumin Pro", 20, "bold"), text_color="#2c3e50").pack(side="left")
 
         # Chart canvas area (larger)
         self.chart_canvas_frame = ctk.CTkFrame(chart_frame, fg_color="#f8f9fa", corner_radius=10)
@@ -584,10 +624,10 @@ class AdminDashboardUI(ctk.CTk):
         alerts_header.grid(row=0, column=0, sticky="ew", padx=15, pady=5)  # Reduced padding
 
         ctk.CTkLabel(alerts_header, text="Low Stock Alerts",
-                     font=("Segoe UI", 20, "bold"), text_color="#2c3e50").pack(side="left")
+                     font=("Acumin Pro", 20, "bold"), text_color="#2c3e50").pack(side="left")
 
         ctk.CTkLabel(alerts_header, text="Action Needed",
-                     font=("Segoe UI", 14), text_color="#e74c3c").pack(side="right")
+                     font=("Acumin Pro", 14), text_color="#e74c3c").pack(side="right")
 
         # Scrollable frame for alerts (larger)
         self.alerts_scroll_frame = ctk.CTkScrollableFrame(
@@ -613,7 +653,7 @@ class AdminDashboardUI(ctk.CTk):
         activity_header.grid(row=0, column=0, sticky="ew", padx=15, pady=10)
 
         ctk.CTkLabel(activity_header, text="Recent Activity",
-                     font=("Segoe UI", 20, "bold"), text_color="#2c3e50").pack(side="left")
+                     font=("Acumin Pro", 20, "bold"), text_color="#2c3e50").pack(side="left")
 
         # ADDED COMMAND TO VIEW ALL ACTIVITIES
         view_all_btn = ctk.CTkButton(
@@ -621,7 +661,7 @@ class AdminDashboardUI(ctk.CTk):
             text="View All",
             width=100,
             height=30,
-            font=("Segoe UI", 14),
+            font=("Acumin Pro", 14),
             fg_color="transparent",
             border_width=1,
             border_color="#3498db",
@@ -668,7 +708,7 @@ class AdminDashboardUI(ctk.CTk):
             ctk.CTkLabel(
                 header_frame,
                 text="All Recent Activities",
-                font=("Segoe UI", 24, "bold"),
+                font=("Acumin Pro", 24, "bold"),
                 text_color="white"
             ).pack(padx=20, pady=15)
 
@@ -694,7 +734,7 @@ class AdminDashboardUI(ctk.CTk):
                 ctk.CTkLabel(
                     scroll_frame,
                     text="No activities found",
-                    font=("Segoe UI", 16),
+                    font=("Acumin Pro", 16),
                     text_color="#7f8c8d"
                 ).pack(pady=20)
             else:
@@ -722,7 +762,7 @@ class AdminDashboardUI(ctk.CTk):
                     ctk.CTkLabel(
                         activity_frame,
                         text=activity_text,
-                        font=("Segoe UI", 16),
+                        font=("Acumin Pro", 16),
                         anchor="w",
                         text_color="#2c3e50"
                     ).pack(side="left", padx=15, pady=10)
@@ -733,7 +773,7 @@ class AdminDashboardUI(ctk.CTk):
                         ctk.CTkLabel(
                             activity_frame,
                             text=time_ago,
-                            font=("Segoe UI", 14),
+                            font=("Acumin Pro", 14),
                             anchor="e",
                             text_color="#7f8c8d"
                         ).pack(side="right", padx=15, pady=10)
@@ -848,7 +888,7 @@ class AdminDashboardUI(ctk.CTk):
         ctk.CTkLabel(
             self.alerts_scroll_frame,
             text="All Low Stock Items:",
-            font=("Segoe UI", 16, "bold"),
+            font=("Acumin Pro", 16, "bold"),
             anchor="w"
         ).pack(fill="x", pady=(5, 10))
 
@@ -893,7 +933,7 @@ class AdminDashboardUI(ctk.CTk):
                 self.alerts_scroll_frame,
                 text="Error loading low stock items",
                 text_color="#e74c3c",
-                font=("Segoe UI", 14)
+                font=("Acumin Pro", 14)
             ).pack(pady=10)
 
     def restock_product(self, product_id):
@@ -1004,7 +1044,7 @@ class AdminDashboardUI(ctk.CTk):
                 self.chart_canvas_frame,
                 text="Could not load chart data",
                 text_color="#e74c3c",
-                font=("Segoe UI", 14)
+                font=("Acumin Pro", 14)
             ).pack(expand=True)
 
     def load_recent_activities(self):
@@ -1039,9 +1079,9 @@ class AdminDashboardUI(ctk.CTk):
                 activity_frame = ctk.CTkFrame(self.activities_frame, fg_color="#f8f9fa" if i % 2 == 0 else "white")
                 activity_frame.pack(fill="x", pady=2)
 
-                ctk.CTkLabel(activity_frame, text=activity, font=("Segoe UI", 15),
+                ctk.CTkLabel(activity_frame, text=activity, font=("Acumin Pro", 15),
                              anchor="w", text_color="#2c3e50").pack(side="left", padx=15, pady=10)
-                ctk.CTkLabel(activity_frame, text=time, font=("Segoe UI", 14),
+                ctk.CTkLabel(activity_frame, text=time, font=("Acumin Pro", 14),
                              anchor="e", text_color="#7f8c8d").pack(side="right", padx=15, pady=10)
 
         except Exception as e:
@@ -1076,9 +1116,9 @@ class AdminDashboardUI(ctk.CTk):
             activity_frame = ctk.CTkFrame(self.activities_frame, fg_color="#f8f9fa")
             activity_frame.pack(fill="x", pady=2)
 
-            ctk.CTkLabel(activity_frame, text=activity_text, font=("Segoe UI", 15),
+            ctk.CTkLabel(activity_frame, text=activity_text, font=("Acumin Pro", 15),
                          anchor="w", text_color="#2c3e50").pack(side="left", padx=15, pady=10)
-            ctk.CTkLabel(activity_frame, text=f"{current_time}", font=("Segoe UI", 14),
+            ctk.CTkLabel(activity_frame, text=f"{current_time}", font=("Acumin Pro", 14),
                          anchor="e", text_color="#7f8c8d").pack(side="right", padx=15, pady=10)
 
         except Exception as e:
