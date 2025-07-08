@@ -96,6 +96,16 @@ class PaymentPageDatabase:
             print(f"Database error during stock deduction: {e}")
             return False, low_stock_items
 
+    def get_admin_emails(self):
+        """Retrieve email addresses of all admin users from the Users table."""
+        try:
+            self.cursor.execute("SELECT Email FROM User WHERE Role = 'Admin'")
+            admin_emails = [row[0] for row in self.cursor.fetchall() if row[0]]
+            return admin_emails
+        except sqlite3.Error as e:
+            print(f"Database error while fetching admin emails: {e}")
+            return []
+
     def get_latest_transaction(self):
         self.cursor.execute("SELECT TransactionID, TotalAmount FROM `Transaction` ORDER BY DateTime DESC LIMIT 1")
         return self.cursor.fetchone()
@@ -309,19 +319,23 @@ class PaymentPage(ctk.CTk):
             print(f"Failed to clear cart.json: {e}")
 
     def send_low_stock_email(self, low_stock_items):
-        """Send an email to the manager with low stock alert."""
+        """Send an email to all admin users with low stock alert."""
         if not low_stock_items:
             return
 
-        # Hardcoded email configuration (replace with actual values)
-        sender_email = "your_email@gmail.com"  # Replace with your Gmail address
-        sender_password = "your_app_password"  # Replace with your Gmail App Password
-        receiver_email = "manager_email@example.com"  # Replace with manager's email
+        sender_email = "zclau4321@gmail.com"
+        sender_password = "raqc juni yrvu rmov"
 
-        # Create email
+        # Retrieve admin emails from the database
+        receiver_emails = self.db.get_admin_emails()
+
+        if not receiver_emails:
+            print("No admin emails found in the database.")
+            return
+
         msg = MIMEMultipart()
         msg['From'] = sender_email
-        msg['To'] = receiver_email
+        msg['To'] = ", ".join(receiver_emails)  # Join emails for the 'To' field
         msg['Subject'] = "Low Stock Alert - InvenTrack Store"
 
         # Email body
@@ -337,10 +351,10 @@ class PaymentPage(ctk.CTk):
             server.starttls()
             server.login(sender_email, sender_password)
 
-            # Send the email
-            server.sendmail(sender_email, receiver_email, msg.as_string())
+            # Send the email to all admin emails
+            server.sendmail(sender_email, receiver_emails, msg.as_string())
             server.quit()
-            print("Low stock email sent successfully.")
+            print(f"Low stock email sent successfully to {', '.join(receiver_emails)}.")
         except Exception as e:
             print(f"Failed to send low stock email: {str(e)}")
 
