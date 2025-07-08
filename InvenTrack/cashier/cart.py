@@ -9,6 +9,11 @@ from dashboard import create_dashboard_widgets
 from flask import Flask, request
 import threading, queue
 
+# Load current user ID
+with open("user_session.json", "r", encoding="utf-8") as uf:
+    user_data = json.load(uf)
+CURRENT_USER_ID = str(user_data.get("id"))  # make sure it's a string key
+
 # a thread‐safe queue to shuttle scan codes into Tk
 scan_queue = queue.Queue()
 
@@ -195,18 +200,20 @@ class POSApp(ctk.CTk):
         conn.close()
 
     def _cart_filepath(self):
-        """Return the filename used to persist the cart."""
+        """Return the single cart.json file used to persist all users' carts."""
         return "cart.json"
 
     def _load_cart_file(self):
-        """Load the saved cart from disk (cart.json) if it exists."""
+        """Load the saved cart for the current user from cart.json, if it exists."""
         path = self._cart_filepath()
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                # JSON keys come in as strings, but our pids are ints:
-                self.cart = {int(k): int(v) for k, v in data.items()}
+                    all_carts = json.load(f)
+                # get only this user's cart, defaulting to empty
+                user_cart = all_carts.get(CURRENT_USER_ID, {})
+                # keys are product‑IDs as strings → convert to ints
+                self.cart = {int(k): int(v) for k, v in user_cart.items()}
             except Exception as e:
                 print(f"Failed to load cart.json: {e}")
                 self.cart = {}
@@ -215,22 +222,41 @@ class POSApp(ctk.CTk):
 
 
     def _save_cart_file(self):
-        """Write the current cart dict to cart.json."""
+        """Write the current user's cart into cart.json alongside other users' carts."""
+        path = self._cart_filepath()
+        all_carts = {}
+        # load existing data if any
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    all_carts = json.load(f)
+            except Exception as e:
+                print(f"Failed to read existing cart.json: {e}")
+        # overwrite only this user's entry
+        all_carts[CURRENT_USER_ID] = {str(pid): qty for pid, qty in self.cart.items()}
+        # write back
         try:
-            to_save = {str(pid): qty for pid, qty in self.cart.items()}
-            with open(self._cart_filepath(), "w", encoding="utf-8") as f:
-                json.dump(to_save, f)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(all_carts, f, indent=2)
         except Exception as e:
             print(f"Failed to save cart.json: {e}")
 
     def _delete_cart_file(self):
-        """Remove cart.json from disk if it exists."""
+        """Remove only the current user's cart from cart.json."""
         path = self._cart_filepath()
         if os.path.exists(path):
             try:
-                os.remove(path)
+                # Read all carts
+                with open(path, "r", encoding="utf-8") as f:
+                    all_carts = json.load(f)
+                # Remove only this user's entry
+                if CURRENT_USER_ID in all_carts:
+                    all_carts.pop(CURRENT_USER_ID)
+                    # Write back the rest
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(all_carts, f, indent=2)
             except Exception as e:
-                print(f"Failed to delete cart.json: {e}")
+                print(f"Failed to remove current user's cart: {e}")
 
 
     def _create_sidebar(self):
