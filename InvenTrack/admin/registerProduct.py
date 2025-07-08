@@ -16,30 +16,105 @@ ctk.set_default_color_theme("blue")
 
 
 class Sidebar(ctk.CTkFrame):
-    def __init__(self, parent, nav_commands, toggle_callback):
-        super().__init__(parent, width=250, fg_color="#2d3e50")
-        ctk.CTkButton(self, text="X", width=30, fg_color="transparent", hover_color="#e74c3c",
-                      text_color="white", command=toggle_callback).pack(anchor="ne", padx=5, pady=5)
+    def __init__(self, parent, nav_commands):
+        super().__init__(parent, fg_color="#2d3e50", corner_radius=0, width=180, height=1080)
+        self.pack_propagate(False)
 
-        ctk.CTkLabel(self, text="Admin Dashboard", font=("Segoe UI", 24), text_color="white").pack(pady=(10, 30))
-        for label, cmd in nav_commands.items():
-            ctk.CTkButton(self, text=label, text_color="#bdc3c7", fg_color="transparent",
-                          hover_color="#1a252f", anchor="w", font=("Segoe UI", 16), corner_radius=0,
-                          command=cmd).pack(fill="x", pady=5)
+        # Sidebar title
+        ctk.CTkLabel(
+            self,
+            text="InvenTrack",
+            font=("Segoe UI", 28, "bold"),
+            text_color="#fff"
+        ).place(x=20, y=20)
+
+        # Navigation buttons
+        self.sidebar_buttons = {}
+        y = 80
+        for name, cmd in nav_commands.items():
+            is_current = (name == "Register Product")
+            btn = ctk.CTkButton(
+                self,
+                text=name,
+                width=160,
+                height=50,
+                corner_radius=10,
+                fg_color="#34495E" if is_current else "transparent",
+                hover_color="#3E5870" if is_current else "#4A6374",
+                text_color="#FFFFFF",
+                font=("Segoe UI", 18.5),
+                command=cmd
+            )
+            btn.place(x=10, y=y)
+            self.sidebar_buttons[name] = btn
+            y += 70
+
+        # Logout button
+        ctk.CTkButton(
+            self,
+            text="🔒 Log Out",
+            width=160,
+            height=50,
+            corner_radius=0,
+            fg_color="transparent",
+            hover_color="#f0f8ff",
+            text_color="#fff",
+            font=("Segoe UI", 18.5),
+            command=lambda: print("Logging out...")
+        ).place(x=10, y=950)
 
 
 class Header(ctk.CTkFrame):
     def __init__(self, parent, title, sidebar_toggle_callback):
-        super().__init__(parent, fg_color="#2d3e50")
+        super().__init__(parent, fg_color="#2d3e50", height=55)
         self.pack(fill="x", pady=(0, 20), padx=0)
-        ctk.CTkButton(self, text="≡", text_color="white", font=("Segoe UI", 20), width=30,
-                      fg_color="transparent", hover_color="#1a252f",
-                      command=sidebar_toggle_callback).pack(side="left", padx=(15, 10), pady=10)
-        ctk.CTkLabel(self, text=title, font=("Segoe UI", 28), text_color="white").pack(side="left", padx=(10, 0),
-                                                                                       pady=10)
-        ctk.CTkButton(self, text="👤", font=("Segoe UI", 20), text_color="white", width=40,
-                      fg_color="transparent", hover_color="#1a252f").pack(side="right", padx=(0, 15), pady=10)
 
+        # Toggle button
+        self.toggle_btn = ctk.CTkButton(
+            self,
+            text="☰",
+            width=45,
+            height=45,
+            corner_radius=0,
+            fg_color="#2d3e50",
+            hover_color="#1a252f",
+            text_color="#fff",
+            font=("Segoe UI", 20),
+            command=sidebar_toggle_callback
+        )
+        self.toggle_btn.place(x=12, y=6)
+
+        try:
+            logo_img = Image.open(r"C:\Users\InvenTrack-main\InvenTrack\admin\assets\frame0\logo_header.png")
+            logo_img = logo_img.resize((40, 40))  # Resize as needed
+            self.logo_photo = ImageTk.PhotoImage(logo_img)
+            self.logo_label = ctk.CTkLabel(self, image=self.logo_photo, text="")
+            self.logo_label.place(x=65, y=5)  # Position left of title
+        except Exception as e:
+            logging.error(f"Failed to load logo: {e}")
+            self.logo_label = None
+
+        # Title
+        self.title_label = ctk.CTkLabel(
+            self,
+            text=title,
+            font=("Segoe UI", 25),
+            text_color="#fff"
+        )
+        self.title_label.place(x=115, y=10)
+
+        # Profile button
+        ctk.CTkButton(
+            self,
+            text="👤",
+            width=40,
+            height=40,
+            corner_radius=0,
+            fg_color="transparent",
+            hover_color="#1a252f",
+            text_color="#fff",
+            font=("Segoe UI", 20)
+        ).place(x=1880, y=10)
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -132,6 +207,7 @@ class ProductRegistrationUI(ctk.CTk):
         self.db_path = self.output_path.parent / "inventoryproject.db"
         self.db_manager = DatabaseManager(self.db_path)
         self.image_path = None
+        self.sidebar_visible = True
 
         # Load background image
         bg_path = self.output_path / "assets/frame0/adminBackground.png"
@@ -143,14 +219,14 @@ class ProductRegistrationUI(ctk.CTk):
 
     def setup_ui(self):
         """Initialize all UI components"""
-        self.sidebar_visible = True
         nav_cmds = {
-            "Dashboard": lambda:self.switch_to_dashboard(),
+            "Dashboard": self.switch_to_dashboard,
             "Register Product": lambda: None,
-            "Manage Products": lambda: self.switch_to_manage_product()
+            "Manage Products": self.switch_to_manage_product
         }
 
-        self.sidebar = Sidebar(self, nav_cmds, self.toggle_sidebar)
+        # Create sidebar with new polished design
+        self.sidebar = Sidebar(self, nav_cmds)
         self.sidebar.pack(side="left", fill="y")
 
         self.main = ctk.CTkFrame(self, fg_color="transparent")
@@ -160,58 +236,64 @@ class ProductRegistrationUI(ctk.CTk):
         bg_label = tk.Label(self.main, image=self._bg_image)
         bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
+        # Create header with new polished design
         self.header = Header(self.main, "Product Registration", self.toggle_sidebar)
+
         self.build_registration_form()
 
+    def toggle_sidebar(self):
+        """Toggle sidebar visibility"""
+        if self.sidebar_visible:
+            self.sidebar.pack_forget()
+        else:
+            self.sidebar.pack(side="left", fill="y", before=self.main)
+        self.sidebar_visible = not self.sidebar_visible
+
     def switch_to_dashboard(self):
-        """Switch to product registration page without confirmation popup"""
+        """Switch to dashboard page"""
         try:
             # Close current window
             self.destroy()
 
-            # Launch registration page
+            # Launch dashboard page
             current_dir = Path(__file__).parent
             dashboard_script = current_dir / "admindashboard.py"
 
             if dashboard_script.exists():
                 subprocess.Popen(['python', str(dashboard_script)])
             else:
-                # Fallback to reopening dashboard if script not found
+                # Fallback to reopening registration if script not found
                 app = ProductRegistrationUI()
                 app.mainloop()
 
         except Exception as e:
             logging.error(f"Error switching to dashboard: {e}")
             messagebox.showerror("Navigation Error", "Failed to open dashboard page")
-            # Reopen dashboard if redirection fails
+            # Reopen registration if redirection fails
             app = ProductRegistrationUI()
             app.mainloop()
 
-    def switch_to_manage_product(self, product_id=None):
-        """Launch manageProduct.py in a new process"""
+    def switch_to_manage_product(self):
+        """Switch to manage product page"""
         try:
-            current_dir = Path(__file__).parent
-            manage_script = current_dir / "manageProduct.py"
-
-            if not manage_script.exists():
-                messagebox.showerror("Error", "Product management module not found!")
-                return
-
             # Close current window
             self.destroy()
 
-            # Prepare command with product ID if available
-            command = ['python', str(manage_script)]
-            if product_id:
-                command.append(str(product_id))
+            # Launch manage products page
+            current_dir = Path(__file__).parent
+            manage_script = current_dir / "manageProduct.py"
 
-            # Launch new process
-            subprocess.Popen(command)
+            if manage_script.exists():
+                subprocess.Popen(['python', str(manage_script)])
+            else:
+                # Fallback to reopening registration if script not found
+                app = ProductRegistrationUI()
+                app.mainloop()
 
         except Exception as e:
-            logging.error(f"Redirection failed: {e}")
-            messagebox.showerror("Navigation Error", "Could not launch product management")
-            # Reopen dashboard if redirection fails
+            logging.error(f"Error switching to manage products: {e}")
+            messagebox.showerror("Navigation Error", "Failed to open manage products page")
+            # Reopen registration if redirection fails
             app = ProductRegistrationUI()
             app.mainloop()
 
@@ -390,14 +472,6 @@ class ProductRegistrationUI(ctk.CTk):
                 messagebox.showerror("Input Error", "Category name cannot be empty.")
 
         tk.Button(popup, text="Save", font=("Segoe UI", 12), command=save_category).pack(pady=10)
-
-    def toggle_sidebar(self):
-        """Toggle sidebar visibility"""
-        if self.sidebar_visible:
-            self.sidebar.pack_forget()
-        else:
-            self.sidebar.pack(side="left", fill="y", before=self.main)
-        self.sidebar_visible = not self.sidebar_visible
 
     def on_close(self):
         """Handle window close event"""
