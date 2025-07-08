@@ -13,6 +13,11 @@ from io import BytesIO
 import qrcode
 import io
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import threading
+import tkinter.messagebox as messagebox
 
 DB_PATH = "inventoryproject.db"
 
@@ -136,6 +141,194 @@ def update_missing_barcodes():
     finally:
         conn.close()
 update_missing_barcodes()
+
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+SENDER_EMAIL = "zclau4321@gmail.com"  # Replace with your email
+SENDER_PASSWORD = "raqc juni yrvu rmov"  # Replace with your app password
+RECEIVER_EMAIL = "zclau4321@gmail.com"
+
+
+def show_contact_manager_popup(product_id, product_name):
+    """Popup window for contacting the manager about a product"""
+    contact_win = ctk.CTkToplevel()
+    contact_win.title(f"Contact Manager - {product_name}")
+    contact_win.geometry("600x500")
+    contact_win.resizable(False, False)
+    contact_win.attributes("-topmost", True)
+    contact_win.grab_set()  # Make it modal
+
+    # Store UI elements for threading access
+    contact_win.send_btn = None
+    contact_win.cancel_btn = None
+    contact_win.status_label = None
+
+    # Main frame
+    main_frame = ctk.CTkFrame(contact_win, fg_color="#ffffff")
+    main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # Header section
+    header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+    header_frame.pack(fill="x", padx=20, pady=15)
+
+    ctk.CTkLabel(
+        header_frame,
+        text=f"Contact Manager about:",
+        font=("Segoe UI", 20, "bold"),
+        text_color="#2d3e50",
+        anchor="w"
+    ).pack(fill="x")
+
+    ctk.CTkLabel(
+        header_frame,
+        text=f"{product_name} (ID: {product_id})",
+        font=("Segoe UI", 16),
+        text_color="#666666",
+        anchor="w"
+    ).pack(fill="x", pady=(5, 10))
+
+    # Message entry
+    msg_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+    msg_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+    ctk.CTkLabel(
+        msg_frame,
+        text="Your Message:",
+        font=("Segoe UI", 14, "bold"),
+        text_color="#444",
+        anchor="w"
+    ).pack(fill="x", pady=(0, 5))
+
+    # Multi-line text entry
+    textbox = ctk.CTkTextbox(msg_frame, font=("Segoe UI", 14))
+    textbox.pack(fill="both", expand=True, pady=(0, 10))
+
+    # Add placeholder text
+    textbox.insert("1.0", "Enter your message here...")
+    textbox.bind("<FocusIn>", lambda e: textbox.delete("1.0", "end") if textbox.get("1.0",
+                                                                                    "end-1c") == "Enter your message here..." else None)
+
+    # Status label (initially hidden)
+    status_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+    status_frame.pack(fill="x", padx=20, pady=(0, 5))
+    contact_win.status_label = ctk.CTkLabel(
+        status_frame,
+        text="",
+        text_color="#28a745",
+        font=("Segoe UI", 12)
+    )
+    contact_win.status_label.pack()
+
+    # Button frame
+    btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+    btn_frame.pack(fill="x", padx=20, pady=10)
+
+    # Cancel button (left)
+    contact_win.cancel_btn = ctk.CTkButton(
+        btn_frame,
+        text="Cancel",
+        font=("Segoe UI", 14, "bold"),
+        fg_color="#6c757d",
+        hover_color="#5a6268",
+        command=contact_win.destroy
+    )
+    contact_win.cancel_btn.pack(side="left", padx=(0, 10))
+
+    # Send button (right)
+    contact_win.send_btn = ctk.CTkButton(
+        btn_frame,
+        text="Send Message",
+        font=("Segoe UI", 14, "bold"),
+        fg_color="#28a745",
+        hover_color="#218838",
+        command=lambda: threading.Thread(
+            target=send_contact_message,
+            args=(product_id, product_name, textbox.get("1.0", "end-1c"), contact_win),
+            daemon=True
+        ).start()
+    )
+    contact_win.send_btn.pack(side="right")
+
+    # Center the window
+    contact_win.update_idletasks()
+    width = contact_win.winfo_width()
+    height = contact_win.winfo_height()
+    x = (contact_win.winfo_screenwidth() // 2) - (width // 2)
+    y = (contact_win.winfo_screenheight() // 2) - (height // 2)
+    contact_win.geometry(f'+{x}+{y}')
+
+    # Set focus to textbox
+    textbox.focus_set()
+
+
+def send_contact_message(product_id, product_name, message, window):
+    """Send contact message to manager via email"""
+    # Disable buttons during sending
+    window.after(0, lambda: window.send_btn.configure(state="disabled"))
+    window.after(0, lambda: window.cancel_btn.configure(state="disabled"))
+    window.after(0, lambda: window.status_label.configure(text="Sending message...", text_color="#007bff"))
+
+    # Validate message
+    if not message.strip() or message == "Enter your message here...":
+        window.after(0, lambda: window.status_label.configure(
+            text="Message cannot be empty!",
+            text_color="#dc3545"
+        ))
+        window.after(0, lambda: window.send_btn.configure(state="normal"))
+        window.after(0, lambda: window.cancel_btn.configure(state="normal"))
+        return
+
+    try:
+        # Create email message
+        msg = MIMEMultipart()
+        msg['From'] = SENDER_EMAIL
+        msg['To'] = RECEIVER_EMAIL
+        msg['Subject'] = f"Product Inquiry: {product_name} (ID: {product_id})"
+
+        # Create HTML email body
+        html = f"""
+        <html>
+          <body>
+            <h2>Product Inquiry</h2>
+            <p><strong>Product Name:</strong> {product_name}</p>
+            <p><strong>Product ID:</strong> {product_id}</p>
+            <p><strong>Message:</strong></p>
+            <div style="background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 10px; margin: 10px 0;">
+              {message}
+            </div>
+            <p><em>This message was sent from the inventory management system.</em></p>
+          </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(html, "html"))
+
+        # Connect to SMTP server and send
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.send_message(msg)
+
+        # Update UI on success
+        window.after(0, lambda: window.status_label.configure(
+            text="✓ Message sent successfully!",
+            text_color="#28a745"
+        ))
+
+        # Close window after delay
+        window.after(2500, window.destroy)
+
+    except Exception as e:
+        error_msg = f"Failed to send message: {str(e)}"
+        print(error_msg)
+
+        # Update UI on error
+        window.after(0, lambda: window.status_label.configure(
+            text=f"✗ {error_msg}",
+            text_color="#dc3545"
+        ))
+        window.after(0, lambda: window.send_btn.configure(state="normal"))
+        window.after(0, lambda: window.cancel_btn.configure(state="normal"))
 
 def show_product_details(product_id):
     """Show detailed product information in a popup window"""
@@ -440,14 +633,27 @@ def show_product_details(product_id):
     btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
     btn_frame.pack(fill="x", padx=20, pady=10)
 
-    ctk.CTkButton(
+    # NEW: Contact Manager button (left)
+    contact_btn = ctk.CTkButton(
+        btn_frame,
+        text="Contact Manager",
+        font=("Segoe UI", 14, "bold"),
+        fg_color="#007bff",  # Blue color
+        hover_color="#0069d9",
+        command=lambda: show_contact_manager_popup(pid, name)
+    )
+    contact_btn.pack(side="left", padx=(0, 10))
+
+    # Existing Close button (right)
+    close_btn = ctk.CTkButton(
         btn_frame,
         text="Close",
         font=("Segoe UI", 14, "bold"),
         fg_color="#2d3e50",
         hover_color="#3c4f63",
         command=detail_win.destroy
-    ).pack(side="right")
+    )
+    close_btn.pack(side="right")
 
     # Center the window
     detail_win.update_idletasks()
