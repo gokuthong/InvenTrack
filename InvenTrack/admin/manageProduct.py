@@ -29,7 +29,7 @@ class Sidebar(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text="InvenTrack",
-            font=("Segoe UI", 28, "bold"),
+            font=("Acumin Pro", 28, "bold"),
             text_color="#fff"
         ).place(x=20, y=20)
 
@@ -47,7 +47,7 @@ class Sidebar(ctk.CTkFrame):
                 fg_color="#34495E" if is_current else "transparent",
                 hover_color="#3E5870" if is_current else "#4A6374",
                 text_color="#FFFFFF",
-                font=("Segoe UI", 18.5),
+                font=("Acumin Pro", 18.5),
                 command=cmd
             )
             btn.place(x=10, y=y)
@@ -64,13 +64,13 @@ class Sidebar(ctk.CTkFrame):
             fg_color="transparent",
             hover_color="#f0f8ff",
             text_color="#fff",
-            font=("Segoe UI", 18.5),
+            font=("Acumin Pro", 18.5),
             command=lambda: print("Logging out...")
         ).place(x=10, y=950)
 
 
 class Header(ctk.CTkFrame):
-    def __init__(self, parent, title, sidebar_toggle_callback):
+    def __init__(self, parent, title, sidebar_toggle_callback, profile_command=None):
         super().__init__(parent, fg_color="#2d3e50", height=55)
         self.pack(fill="x", pady=(0, 20), padx=0)
 
@@ -84,7 +84,7 @@ class Header(ctk.CTkFrame):
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI", 20),
+            font=("Acumin Pro", 20),
             command=sidebar_toggle_callback
         )
         self.toggle_btn.place(x=12, y=6)
@@ -103,7 +103,7 @@ class Header(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(
             self,
             text=title,
-            font=("Segoe UI", 25),
+            font=("Acumin Pro", 25),
             text_color="#fff"
         )
         self.title_label.place(x=115, y=10)
@@ -118,8 +118,23 @@ class Header(ctk.CTkFrame):
             fg_color="transparent",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI", 20)
+            font=("Acumin Pro", 20)
         ).place(x=1880, y=10)  # Positioned at top-right corner
+
+        # Profile button
+        self.profile_btn = ctk.CTkButton(
+            self,
+            text="👤",
+            width=35,
+            height=35,
+            corner_radius=0,
+            fg_color="#2d3e50",
+            hover_color="#1a252f",
+            text_color="#fff",
+            font=("Acumin Pro", 20),
+            command=profile_command
+        )
+        self.profile_btn.place(x=1700, y=10)
 
 
 class ProductCard(ctk.CTkFrame):
@@ -151,20 +166,20 @@ class ProductCard(ctk.CTkFrame):
         self.img_label.pack(fill="both", expand=True)
 
         # Product name - increased font size and wraplength
-        name_label = ctk.CTkLabel(self, text=product_data[1], font=("Segoe UI", 20, "bold"),
+        name_label = ctk.CTkLabel(self, text=product_data[1], font=("Acumin Pro", 20, "bold"),
                                   wraplength=self.card_width - 20, justify="left")
         name_label.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="w")
 
-        # Category and price - increased font sizes
+        # Category and price
         cat_price_frame = ctk.CTkFrame(self, fg_color="transparent")
         cat_price_frame.grid(row=2, column=0, padx=10, sticky="ew")
 
         ctk.CTkLabel(cat_price_frame, text=product_data[2],
-                     font=("Segoe UI", 16), text_color="#555555").pack(side="left")
+                     font=("Acumin Pro", 16), text_color="#555555").pack(side="left")
         ctk.CTkLabel(cat_price_frame, text=f"RM{product_data[4]:.2f}",
-                     font=("Segoe UI", 18, "bold"), text_color="black").pack(side="right")
+                     font=("Acumin Pro", 18, "bold"), text_color="black").pack(side="right")
 
-        # Stock and status - increased font sizes
+        # Stock and status
         stock_frame = ctk.CTkFrame(self, fg_color="transparent")
         stock_frame.grid(row=3, column=0, padx=10, sticky="ew", pady=(5, 10))
 
@@ -176,24 +191,27 @@ class ProductCard(ctk.CTkFrame):
         elif status and "Out" in status:
             status_color = "#e74c3c"  # Red for out of stock
 
-        ctk.CTkLabel(stock_frame, text=stock_text, font=("Segoe UI", 16)).pack(side="left")
-        ctk.CTkLabel(stock_frame, text=status, font=("Segoe UI", 16, "bold"),
+        ctk.CTkLabel(stock_frame, text=stock_text, font=("Acumin Pro", 16)).pack(side="left")
+        ctk.CTkLabel(stock_frame, text=status, font=("Acumin Pro", 16, "bold"),
                      text_color=status_color).pack(side="right")
 
-        # Action buttons - increased button sizes
+        # Action buttons
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.grid(row=4, column=0, padx=10, pady=(0, 15), sticky="ew")
-        btn_frame.grid_columnconfigure(0, weight=1)  # Center the button
+        btn_frame.grid_columnconfigure(0, weight=1)
 
-        # Only keep the View button, now centered and labeled "Modify"
         ctk.CTkButton(
             btn_frame,
             text="Manage",
             width=80,
-            height=35,  # Increased dimensions
-            font=("Segoe UI", 15),
+            height=35,
+            font=("Acumin Pro", 16),
+            fg_color="#FFDAB9",
+            hover_color="#FFE4B5",
+            text_color="#696969",
             command=lambda: view_callback(product_data[0])
-        ).grid(row=0, column=0, sticky="nsew")  # Centered in the frame
+        ).grid(row=0, column=0, sticky="nsew")
+
     def load_product_image(self, product_data):
         """Load product image with fallback to placeholder"""
         try:
@@ -234,8 +252,8 @@ class ProductManagementUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Product Management")
-        self.geometry("1920x1080")
-        self.attributes('-fullscreen', True)
+        width, height = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"{width}x{height}+0+0")
         self.configure(fg_color="#f4f7fa")
         self.output_path = Path(__file__).parent
         self.db_path = self.output_path.parent / "inventoryproject.db"
@@ -287,9 +305,34 @@ class ProductManagementUI(ctk.CTk):
             bg_label = tk.Label(self.main, image=self._bg_image)
             bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-        self.header = Header(self.main, "Product Management", self.toggle_sidebar)
+        self.header = Header(self.main, "Product Management", self.toggle_sidebar, self.goto_profile)
         self.build_ui()
         self.load_products()
+
+    def goto_profile(self):
+        """Close current window and open Profile page"""
+        try:
+            # Close current window
+            self.destroy()
+
+            # Launch profile page
+            current_dir = Path(__file__).parent
+            profile_script = current_dir / "Profile page.py"
+
+            if profile_script.exists():
+                subprocess.Popen(['python', str(profile_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                messagebox.showerror("Error", "Profile page not found!")
+                app = ProductManagementUI()
+                app.mainloop()
+
+        except Exception as e:
+            logging.error(f"Error switching to profile: {e}")
+            messagebox.showerror("Navigation Error", "Failed to open profile page")
+            # Reopen dashboard if redirection fails
+            app = ProductManagementUI()
+            app.mainloop()
 
     def switch_to_dashboard(self):
         """Switch to product registration page without confirmation popup"""
@@ -364,7 +407,7 @@ class ProductManagementUI(ctk.CTk):
         top_frame.grid_columnconfigure(1, weight=1)
 
         # Title
-        ctk.CTkLabel(top_frame, text="Product Inventory", font=("Segoe UI", 28, "bold")).grid(
+        ctk.CTkLabel(top_frame, text="Product Inventory", font=("Acumin Pro", 28, "bold")).grid(
             row=0, column=0, sticky="w", padx=(0, 20))
 
         # Search and filter
@@ -376,7 +419,7 @@ class ProductManagementUI(ctk.CTk):
             placeholder_text="Search products...",
             width=250,
             height=40,
-            font=("Segoe UI", 16)
+            font=("Acumin Pro", 16)
         )
         self.search_entry.pack(side="left", padx=(0, 5))
         self.search_entry.bind("<KeyRelease>", self.search_products)
@@ -387,7 +430,10 @@ class ProductManagementUI(ctk.CTk):
             text="Search",
             width=80,
             height=40,
-            font=("Segoe UI", 16),
+            font=("Acumin Pro", 16),
+            fg_color= "#FFF5EE",
+            hover_color= "#FAEBD7",
+            text_color= "#8B4513",
             command=self.search_products
         ).pack(side="left", padx=(0, 10))
 
@@ -416,7 +462,7 @@ class ProductManagementUI(ctk.CTk):
             self.current_filter_label = ctk.CTkLabel(
                 search_frame,
                 text=self.current_category,
-                font=("Segoe UI", 14),
+                font=("Acumin Pro", 14),
                 width=120
             )
             self.current_filter_label.pack(side="left", padx=(0, 10))
@@ -429,7 +475,7 @@ class ProductManagementUI(ctk.CTk):
                 text="Filter",
                 width=80,
                 height=40,
-                font=("Segoe UI", 16),
+                font=("Acumin Pro", 16),
                 command=self.show_filter_menu
             )
             self.filter_button.pack(side="left", padx=(0, 10))
@@ -437,7 +483,7 @@ class ProductManagementUI(ctk.CTk):
             self.current_filter_label = ctk.CTkLabel(
                 search_frame,
                 text=self.current_category,
-                font=("Segoe UI", 14),
+                font=("Acumin Pro", 14),
                 width=120
             )
             self.current_filter_label.pack(side="left", padx=(0, 10))
@@ -448,9 +494,10 @@ class ProductManagementUI(ctk.CTk):
             text="+ Add Product",
             width=150,
             height=40,
-            font=("Segoe UI", 16),
-            fg_color="#27ae60",
-            hover_color="#219653",
+            font=("Acumin Pro", 16),
+            fg_color="#72f272",
+            hover_color="#12d712",
+            text_color="#2F4F4F",
             command=self.add_new_product
         ).grid(row=0, column=2, padx=(20, 0))
 
@@ -460,7 +507,10 @@ class ProductManagementUI(ctk.CTk):
             text="Generate Report",
             width=150,
             height=40,
-            font=("Segoe UI", 16),
+            font=("Acumin Pro", 16),
+            fg_color="#fdbd83",
+            hover_color="#fcae68",
+            text_color="#2F4F4F",
             command=self.generate_report
         ).grid(row=0, column=3, padx=(10, 0))
 
@@ -490,7 +540,7 @@ class ProductManagementUI(ctk.CTk):
 
         # Status bar
         self.status_bar = ctk.CTkLabel(self.container, text="0 products found",
-                                       font=("Segoe UI", 14), text_color="#555555")
+                                       font=("Acumin Pro", 14), text_color="#555555")
         self.status_bar.grid(row=2, column=0, sticky="w", padx=20, pady=(0, 10))
 
     def show_filter_menu(self):
@@ -571,7 +621,7 @@ class ProductManagementUI(ctk.CTk):
         if not self.filtered_products:
             # Show message if no products found
             no_products = ctk.CTkLabel(self.scrollable_frame, text="No products found",
-                                       font=("Segoe UI", 20), text_color="#777777")
+                                       font=("Acumin Pro", 20), text_color="#777777")
             no_products.pack(pady=100)
             return
 
@@ -701,6 +751,8 @@ class ProductManagementUI(ctk.CTk):
             width=200,
             height=40,
             font=("Arial", 16),
+            fg_color="#778899",
+            hover_color="#708090",
             command=lambda: self.change_product_image(product_id, detail_window)
         ).pack(pady=(20, 0))
 
