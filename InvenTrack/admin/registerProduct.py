@@ -9,6 +9,7 @@ import qrcode
 import io
 import logging
 import subprocess
+import json
 
 # Set appearance mode and color theme
 ctk.set_appearance_mode("System")
@@ -16,7 +17,7 @@ ctk.set_default_color_theme("blue")
 
 
 class Sidebar(ctk.CTkFrame):
-    def __init__(self, parent, nav_commands):
+    def __init__(self, parent, nav_commands, logout_command):
         super().__init__(parent, fg_color="#2d3e50", corner_radius=0, width=180, height=1080)
         self.pack_propagate(False)
 
@@ -60,7 +61,7 @@ class Sidebar(ctk.CTkFrame):
             hover_color="#f0f8ff",
             text_color="#fff",
             font=("Acumin Pro", 18.5),
-            command=lambda: print("Logging out...")
+            command=logout_command
         ).place(x=10, y=950)
 
 
@@ -104,32 +105,19 @@ class Header(ctk.CTkFrame):
         self.title_label.place(x=115, y=10)
 
         # Profile button
-        ctk.CTkButton(
+        self.profile_btn = ctk.CTkButton(
             self,
             text="👤",
             width=40,
             height=40,
             corner_radius=0,
-            fg_color="transparent",
-            hover_color="#1a252f",
-            text_color="#fff",
-            font=("Acumin Pro", 20)
-        ).place(x=1880, y=10)  # Positioned at top-right corner
-
-        # Profile button
-        self.profile_btn = ctk.CTkButton(
-            self,
-            text="👤",
-            width=35,
-            height=35,
-            corner_radius=0,
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Acumin Pro", 20),
+            font=("Acumin Pro", 25),
             command=profile_command
         )
-        self.profile_btn.place(x=1700, y=10)
+        self.profile_btn.place(x=1650, y=10)
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -241,7 +229,7 @@ class ProductRegistrationUI(ctk.CTk):
         }
 
         # Create sidebar with new polished design
-        self.sidebar = Sidebar(self, nav_cmds)
+        self.sidebar = Sidebar(self, nav_cmds, self.logout)  # Pass logout method as command
         self.sidebar.pack(side="left", fill="y")
 
         self.main = ctk.CTkFrame(self, fg_color="transparent")
@@ -255,6 +243,36 @@ class ProductRegistrationUI(ctk.CTk):
         self.header = Header(self.main, "Product Registration", self.toggle_sidebar, self.goto_profile)
 
         self.build_registration_form()
+
+    def clear_user_session(self):
+        """Clear the user session data"""
+        session_file = Path(__file__).parent.parent / "user_session.json"
+        try:
+            if session_file.exists():
+                session_file.unlink()
+        except Exception as e:
+            logging.error(f"Error clearing user session: {e}")
+
+    def logout(self):
+        """Handle logout process"""
+        try:
+            # Clear the user session
+            self.clear_user_session()
+
+            # Close current window
+            self.destroy()
+
+            # Launch login page
+            current_dir = Path(__file__).parent
+            login_script = current_dir / "login.py"  # Assuming login.py is in parent directory
+
+            if login_script.exists():
+                subprocess.Popen(['python', str(login_script)])
+            else:
+                messagebox.showerror("Error", "Login page not found!")
+        except Exception as e:
+            logging.error(f"Error during logout: {e}")
+            messagebox.showerror("Logout Error", "Failed to logout properly")
 
     def goto_profile(self):
         """Close current window and open Profile page"""
