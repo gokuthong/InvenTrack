@@ -21,7 +21,7 @@ logging.basicConfig(
 
 
 class Sidebar(ctk.CTkFrame):
-    def __init__(self, parent, nav_commands):
+    def __init__(self, parent, nav_commands, logout_command):
         super().__init__(parent, fg_color="#2d3e50", corner_radius=0, width=180, height=1080)
         self.pack_propagate(False)
 
@@ -65,7 +65,7 @@ class Sidebar(ctk.CTkFrame):
             hover_color="#f0f8ff",
             text_color="#fff",
             font=("Acumin Pro", 18.5),
-            command=lambda: print("Logging out...")
+            command=logout_command
         ).place(x=10, y=950)
 
 
@@ -109,32 +109,19 @@ class Header(ctk.CTkFrame):
         self.title_label.place(x=115, y=10)
 
         # Profile button
-        ctk.CTkButton(
+        self.profile_btn = ctk.CTkButton(
             self,
             text="👤",
             width=40,
             height=40,
             corner_radius=0,
-            fg_color="transparent",
-            hover_color="#1a252f",
-            text_color="#fff",
-            font=("Acumin Pro", 20)
-        ).place(x=1880, y=10)  # Positioned at top-right corner
-
-        # Profile button
-        self.profile_btn = ctk.CTkButton(
-            self,
-            text="👤",
-            width=35,
-            height=35,
-            corner_radius=0,
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Acumin Pro", 20),
+            font=("Acumin Pro", 25),
             command=profile_command
         )
-        self.profile_btn.place(x=1700, y=10)
+        self.profile_btn.place(x=1650, y=10)
 
 
 class ProductCard(ctk.CTkFrame):
@@ -159,7 +146,6 @@ class ProductCard(ctk.CTkFrame):
         # Load product image with fallback options
         img = self.load_product_image(product_data)
 
-        # Resize and create thumbnail using CTkImage
         img = ImageOps.contain(img, (self.img_width, self.img_height))
         self.photo = ctk.CTkImage(light_image=img, size=(self.img_width, self.img_height))
         self.img_label = ctk.CTkLabel(self.img_frame, image=self.photo, text="")
@@ -222,14 +208,12 @@ class ProductCard(ctk.CTkFrame):
                 except:
                     pass
 
-            # Then try to load QR code
             if product_data[3]:
                 try:
                     return Image.open(io.BytesIO(product_data[3])).resize((200, 180))
                 except:
                     pass
 
-            # Finally generate a QR code if nothing else works
             qr = qrcode.QRCode(version=1, box_size=4, border=2)
             qr_data = (
                 f"Item: {product_data[1]}\n"
@@ -262,14 +246,11 @@ class ProductManagementUI(ctk.CTk):
         self.current_category = "All Categories"
         self.pending_image_path = None
 
-        # Load button images
         try:
-            # Plus button image
             plus_img_path = self.output_path / "assets/frame0/plus.png"
             plus_img = Image.open(plus_img_path)
             self.plus_icon = ctk.CTkImage(light_image=plus_img, size=(30, 30))
 
-            # Minus button image
             minus_img_path = self.output_path / "assets/frame0/minus.png"
             minus_img = Image.open(minus_img_path)
             self.minus_icon = ctk.CTkImage(light_image=minus_img, size=(32, 33))
@@ -278,7 +259,6 @@ class ProductManagementUI(ctk.CTk):
             self.plus_icon = None
             self.minus_icon = None
 
-        # Background setup
         try:
             bg_path = self.output_path / "assets/frame0/adminBackground.png"
             bg = Image.open(bg_path).resize((1920, 1080))
@@ -294,7 +274,7 @@ class ProductManagementUI(ctk.CTk):
         }
 
         self.sidebar_visible = True  # Add this line
-        self.sidebar = Sidebar(self, nav_cmds)  # Modified this line
+        self.sidebar = Sidebar(self, nav_cmds, self.logout)
         self.sidebar.pack(side="left", fill="y")
 
         self.main = ctk.CTkFrame(self, fg_color="transparent")
@@ -308,6 +288,35 @@ class ProductManagementUI(ctk.CTk):
         self.header = Header(self.main, "Product Management", self.toggle_sidebar, self.goto_profile)
         self.build_ui()
         self.load_products()
+
+    def clear_user_session(self):
+        """Clear the user session data"""
+        session_file = Path(__file__).parent.parent / "user_session.json"
+        try:
+            if session_file.exists():
+                session_file.unlink()
+        except Exception as e:
+            logging.error(f"Error clearing user session: {e}")
+
+    def logout(self):
+        """Handle logout process"""
+        try:
+            # Clear the user session
+            self.clear_user_session()
+
+            self.destroy()
+
+            # Launch login page
+            current_dir = Path(__file__).parent
+            login_script = current_dir / "login.py"
+
+            if login_script.exists():
+                subprocess.Popen(['python', str(login_script)])
+            else:
+                messagebox.showerror("Error", "Login page not found!")
+        except Exception as e:
+            logging.error(f"Error during logout: {e}")
+            messagebox.showerror("Logout Error", "Failed to logout properly")
 
     def goto_profile(self):
         """Close current window and open Profile page"""
@@ -518,7 +527,6 @@ class ProductManagementUI(ctk.CTk):
         self.products_frame = ctk.CTkFrame(self.container, fg_color="transparent")
         self.products_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 20))
 
-        # Create a canvas and scrollbar
         self.canvas = tk.Canvas(self.products_frame, bg="#f8f9fa", highlightthickness=0)
         scrollbar = ctk.CTkScrollbar(self.products_frame, orientation="vertical", command=self.canvas.yview)
         self.scrollable_frame = ctk.CTkFrame(self.canvas, fg_color="transparent")
@@ -531,11 +539,9 @@ class ProductManagementUI(ctk.CTk):
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Pack the canvas and scrollbar
         self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Bind mousewheel to scroll
         self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         # Status bar
@@ -546,7 +552,6 @@ class ProductManagementUI(ctk.CTk):
     def show_filter_menu(self):
         """Show the filter menu when filter button is clicked"""
         try:
-            # Create filter menu (will be shown when button is clicked)
             self.filter_menu = tk.Menu(self, tearoff=0)
             self.filter_menu.add_command(
                 label="All Categories",
@@ -630,7 +635,7 @@ class ProductManagementUI(ctk.CTk):
         margin_frame.pack(fill="both", expand=True, padx=33)  # Added 50px padding on left and right
 
         # Calculate number of columns based on window width
-        num_cols = 5  # Default to 5 columns
+        num_cols = 5
 
         # Create a grid of product cards
         for i, product in enumerate(self.filtered_products):
@@ -674,7 +679,6 @@ class ProductManagementUI(ctk.CTk):
 
     def view_product_details(self, product_id):
         """Show detailed view of selected product with QR code and table format"""
-        # Find the product by ID
         product = next((p for p in self.products if p[0] == product_id), None)
 
         if not product:
@@ -744,7 +748,7 @@ class ProductManagementUI(ctk.CTk):
         detail_window.prod_img_label.image = prod_photo
         detail_window.prod_img_label.pack()
 
-        # Change image button - pass the detail_window to the method
+        # Change image button
         ctk.CTkButton(
             img_frame,
             text="Change Product Image",
@@ -822,7 +826,7 @@ class ProductManagementUI(ctk.CTk):
             row_frame = ctk.CTkFrame(table_frame, fg_color="transparent")
             row_frame.pack(fill="x", pady=25)
 
-            # Label - fixed width and alignment
+            # Label
             ctk.CTkLabel(
                 row_frame,
                 text=label,
@@ -854,7 +858,6 @@ class ProductManagementUI(ctk.CTk):
                 field.pack(side="left")
                 self.editable_fields[label.lower().replace(" ", "_").replace(":", "")] = field
             else:
-                # Non-editable field with same width as entry fields
                 ctk.CTkLabel(
                     row_frame,
                     text=value,
@@ -906,7 +909,6 @@ class ProductManagementUI(ctk.CTk):
         stock_entry.pack(side="left", padx=5)
         self.editable_fields["stock_quantity"] = stock_entry
 
-        # Create + button with plus icon
         plus_button = ctk.CTkButton(
             quantity_frame,
             text="",  # Empty text since we're using an image
@@ -988,7 +990,6 @@ class ProductManagementUI(ctk.CTk):
             sql_parts = ["category = ?", "price = ?", "stockQuantity = ?"]
             params = [updates["category"], updates["price"], updates["stock_quantity"]]
 
-            # If they picked a new image, include it
             if self.pending_image_path:
                 sql_parts.append("imagepath = ?")
                 params.append(self.pending_image_path)
@@ -1042,7 +1043,6 @@ class ProductManagementUI(ctk.CTk):
         )
 
         if file_path:
-            # Remember the image path for the update
             self.pending_image_path = file_path
 
             # Update the thumbnail preview in the window
@@ -1164,7 +1164,7 @@ class ProductManagementUI(ctk.CTk):
                     padx=10
                 ).grid(row=0, column=col, sticky="w")
 
-            # Table rows with alternating colors
+            # Table rows
             for i, (category, count, value) in enumerate(category_data):
                 row_idx = i + 1
                 row_color = "#ffffff" if i % 2 == 0 else "#f5f5f5"
