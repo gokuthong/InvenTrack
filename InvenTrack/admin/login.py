@@ -7,7 +7,7 @@ import customtkinter as ctk
 import os
 
 # Import RegistrationForm from your register file
-from register import RegistrationForm
+from InvenTrack.admin.register import RegistrationForm
 
 
 class LoginForm:
@@ -17,7 +17,7 @@ class LoginForm:
         self.root.configure(bg="#E1E1F0")
 
         self.output_path = Path(__file__).parent
-        self.assets_path = Path(r"C:\InvenTrack-main\InvenTrack\admin\assets\frame0")
+        self.assets_path = Path(r"C:\Users\InvenTrack-main\InvenTrack\admin\assets\frame0")
 
         self.password_visible = False
         self.setup_database()
@@ -87,9 +87,13 @@ class LoginForm:
                              lambda event: [self.canvas.move(self.login_button, -1, -1), self.submit()])
 
         # Clickable register text
-        self.register_text = self.canvas.create_text(1020.0, 720.0, anchor="nw",
-                                                     text="Don't have an account? Register here!",
-                                                     fill="#111111", font=("Segoe UI", 24 * -1))
+        self.canvas.create_text(1020.0, 720.0, anchor="nw", text="Don't have an account?", fill="#111111",
+                                font=("Acumin Pro", 24 * -1))
+
+        # Create the clickable "Log in" part
+        self.register_text = self.canvas.create_text(1285.0, 720.0, anchor="nw", text="Register here!",
+                                                     fill="black", font=("Acumin Pro", 24 * -1, "underline", "italic"),
+                                                     tags=("register_link",))
         self.canvas.tag_bind(self.register_text, "<Button-1>", self.open_register)
 
     def toggle_password_visibility(self):
@@ -105,18 +109,18 @@ class LoginForm:
 
     def redirect_to_dashboard(self, role):
         """Redirect to appropriate dashboard based on user role"""
-        self.root.destroy()  # Close the login window
+        self.root.destroy()
 
         try:
             if role.lower() == "admin":
                 from admindashboard import AdminDashboardUI
                 app = AdminDashboardUI()
             elif role.lower() == "manager":
-                from managerdashboard import ManagerDashboard
+                from InvenTrack.manager.manager import ManagerDashboard
                 app = ManagerDashboard()
             elif role.lower() == "cashier":
-                from cashierdashboard import CashierDashboard
-                app = CashierDashboard()
+                from InvenTrack.cashier.cart import POSApp
+                app = POSApp()
             else:
                 raise ValueError("Unknown user role")
 
@@ -150,7 +154,7 @@ class LoginForm:
             messagebox.showerror("Login Failed", "Invalid email or password.")
 
     def open_register(self, event=None):
-        self.root.destroy()
+        self.root.destroy()  # Properly destroy the current window
         new_root = Tk()
         RegistrationForm(new_root)
         new_root.resizable(False, False)
