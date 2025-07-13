@@ -10,6 +10,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import os
 from datetime import datetime
 import subprocess
+import json
 import sys
 
 # Configure logging
@@ -20,7 +21,7 @@ logging.basicConfig(
 )
 
 
-# CUSTOM MESSAGEBOX WITH LARGER SIZE (ONLY FOR RESTOCK CONFIRMATION)
+# CUSTOM MESSAGEBOX (ONLY FOR RESTOCK CONFIRMATION)
 class CustomMessageBox(ctk.CTkToplevel):
     def __init__(self, parent, title, message, buttons=("OK",), icon=None, width=500, height=300):
         super().__init__(parent)
@@ -51,7 +52,7 @@ class CustomMessageBox(ctk.CTkToplevel):
             icon_label = ctk.CTkLabel(content_frame, text=icon, font=("Arial", 32))
             icon_label.grid(row=0, column=0, pady=(20, 10))
 
-        # Add message with larger font
+        # Add message
         message_label = ctk.CTkLabel(
             content_frame,
             text=message,
@@ -183,12 +184,11 @@ class DatabaseManager:
 
         except Exception as e:
             logging.error(f"Database initialization failed: {e}")
-            # Use standard message box for errors
             messagebox.showerror("Database Error", f"Failed to initialize database:\n{str(e)}")
 
 
 class Sidebar(ctk.CTkFrame):
-    def __init__(self, parent, nav_commands):
+    def __init__(self, parent, nav_commands, logout_command):
         super().__init__(parent, fg_color="#2d3e50", corner_radius=0, width=180, height=1080)
         self.pack_propagate(False)
 
@@ -232,7 +232,7 @@ class Sidebar(ctk.CTkFrame):
             hover_color="#f0f8ff",
             text_color="#fff",
             font=("Acumin Pro", 18.5),
-            command=lambda: print("Logging out...")
+            command=logout_command
         ).place(x=10, y=950)
 
 
@@ -276,32 +276,19 @@ class Header(ctk.CTkFrame):
         self.title_label.place(x=115, y=10)
 
         # Profile button
-        ctk.CTkButton(
+        self.profile_btn = ctk.CTkButton(
             self,
             text="👤",
             width=40,
             height=40,
             corner_radius=0,
-            fg_color="transparent",
-            hover_color="#1a252f",
-            text_color="#fff",
-            font=("Acumin Pro", 20)
-        ).place(x=1880, y=10)  # Positioned at top-right corner
-
-        # Profile button
-        self.profile_btn = ctk.CTkButton(
-            self,
-            text="👤",
-            width=35,
-            height=35,
-            corner_radius=0,
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Acumin Pro", 20),
+            font=("Acumin Pro", 25),
             command=profile_command
         )
-        self.profile_btn.place(x=1700, y=10)
+        self.profile_btn.place(x=1650, y=10)
 
 
 class SummaryCard(ctk.CTkFrame):
@@ -458,7 +445,7 @@ class AdminDashboardUI(ctk.CTk):
             "Manage Products": lambda: self.redirect_to_manage_product()
         }
 
-        self.sidebar = Sidebar(self, nav_cmds)
+        self.sidebar = Sidebar(self, nav_cmds, self.logout)
         self.sidebar.pack(side="left", fill="y")
 
         self.main = ctk.CTkFrame(self, fg_color="transparent")
@@ -472,6 +459,36 @@ class AdminDashboardUI(ctk.CTk):
         self.header = Header(self.main, "Admin Dashboard", self.toggle_sidebar, self.goto_profile)
         self.build_ui()
         self.load_dashboard_data()
+
+    def clear_user_session(self):
+        """Clear the user session data"""
+        session_file = Path(__file__).parent.parent / "user_session.json"
+        try:
+            if session_file.exists():
+                session_file.unlink()
+        except Exception as e:
+            logging.error(f"Error clearing user session: {e}")
+
+    def logout(self):
+        """Handle logout process"""
+        try:
+            # Clear the user session
+            self.clear_user_session()
+
+            # Close current window
+            self.destroy()
+
+            # Launch login page
+            current_dir = Path(__file__).parent
+            login_script = current_dir / "login.py"
+
+            if login_script.exists():
+                subprocess.Popen(['python', str(login_script)])
+            else:
+                messagebox.showerror("Error", "Login page not found!")
+        except Exception as e:
+            logging.error(f"Error during logout: {e}")
+            messagebox.showerror("Logout Error", "Failed to logout properly")
 
     def goto_profile(self):
         """Close current window and open Profile page"""
@@ -876,65 +893,6 @@ class AdminDashboardUI(ctk.CTk):
             error_msg = f"Unexpected error: {str(e)}"
             logging.error(f"Error in load_dashboard_data: {error_msg}")
             messagebox.showerror("Error", error_msg)
-
-    # NEW METHOD TO HANDLE LOW STOCK VIEWING
-    def view_low_stock(self):
-        """Handle viewing all low stock items"""
-        # Clear existing alerts
-        for widget in self.alerts_scroll_frame.winfo_children():
-            widget.destroy()
-
-        # Add a label indicating we're showing all low stock items
-        ctk.CTkLabel(
-            self.alerts_scroll_frame,
-            text="All Low Stock Items:",
-            font=("Acumin Pro", 16, "bold"),
-            anchor="w"
-        ).pack(fill="x", pady=(5, 10))
-
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT productID, productName, category, stockQuantity, status 
-                    FROM product 
-                    WHERE stockQuantity < 5 OR status = 'Low Stock' OR status = 'Out of Stock'
-                    ORDER BY stockQuantity ASC
-                """)
-                low_stock_items = cursor.fetchall()
-
-                # Add low stock alerts
-                for item in low_stock_items:
-                    product_id, product_name, category, stock, status = item
-                    if stock <= 0:
-                        status = "Out of Stock"
-                    elif stock <= 1:
-                        status = "Critical Stock"
-                    elif stock <= 4:
-                        status = "Low Stock"
-
-                    # Create callback for restock button
-                    restock_callback = lambda pid=product_id: self.restock_product(pid)
-
-                    item_frame = LowStockItem(
-                        self.alerts_scroll_frame,
-                        product_name,
-                        category,
-                        stock,
-                        status,
-                        restock_callback
-                    )
-                    item_frame.pack(fill="x", pady=5)
-                    self.low_stock_items.append(item_frame)
-
-        except Exception as e:
-            logging.error(f"Error loading low stock items: {e}")
-            ctk.CTkLabel(
-                self.alerts_scroll_frame,
-                text="Error loading low stock items",
-                text_color="#e74c3c",
-                font=("Acumin Pro", 14)
-            ).pack(pady=10)
 
     def restock_product(self, product_id):
         """Redirect to manage products page for restocking"""
