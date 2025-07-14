@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageGrab
 import customtkinter as ctk
 from tkinter import messagebox
 import sqlite3
@@ -12,6 +12,11 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
+import subprocess
+import logging
+from InvenTrack.cashier import cart
+import sys
+from cart import POSApp
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -38,36 +43,20 @@ class PaymentPageDatabase:
         """)
         self.conn.commit()
 
-    def insert_card_payment(self, transaction_id, cardholder_name_hashed, card_number_hashed, expiry_hashed, cvv_hashed):
-        """Insert hashed card payment details into CardPayment table."""
-        payment_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            self.cursor.execute("""
-                INSERT INTO CardPayment (TransactionID, CardholderName, CardNumber, ExpiryDate, CVV, PaymentDateTime)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (transaction_id, cardholder_name_hashed, card_number_hashed, expiry_hashed, cvv_hashed, payment_datetime))
-            self.conn.commit()
-            return True
-        except sqlite3.Error as e:
-            print(f"Database error during card payment insertion: {e}")
-            return False
-
-    def insert_transaction(self, total_amount, cashier_id):
-        """Insert a new transaction into the Transaction table."""
+    def insert_transaction(self, total_amount, cashier_id, payment_method, receipt_path=None):
         transaction_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             self.cursor.execute("""
-                INSERT INTO `Transaction` (DateTime, TotalAmount, CashierID)
-                VALUES (?, ?, ?)
-            """, (transaction_datetime, total_amount, cashier_id))
-            self.conn.commit()
-            return self.cursor.lastrowid  # Return the TransactionID
+                INSERT INTO `Transaction` (DateTime, TotalAmount, CashierID, Receipt, PaymentMethod)
+                VALUES (?, ?, ?, ?, ?)
+            """, (transaction_datetime, total_amount, cashier_id, receipt_path, payment_method))
+            return self.cursor.lastrowid
         except sqlite3.Error as e:
             print(f"Database error during transaction insertion: {e}")
             return None
 
     def deduct_stock(self, cart_items):
-        """Deduct stock quantities for sold items in the product table and return low stock items."""
+        """Deduct stock quantities WITHOUT committing."""
         low_stock_items = []
         try:
             for product_id, quantity in cart_items.items():
@@ -88,11 +77,25 @@ class PaymentPageDatabase:
                         'product_name': product_name,
                         'stock_quantity': new_stock
                     })
-            self.conn.commit()
             return True, low_stock_items
         except sqlite3.Error as e:
             print(f"Database error during stock deduction: {e}")
             return False, low_stock_items
+
+    def insert_transaction_details(self, transaction_id, cart_items):
+        try:
+            for product_id, quantity in cart_items.items():
+                product_details = self.get_product_details(product_id)
+                if product_details:
+                    price = round(float(product_details[1]), 2)
+                    self.cursor.execute("""
+                        INSERT INTO TransactionDetail (TransactionID, ProductID, Quantity, Price)
+                        VALUES (?, ?, ?, ?)
+                    """, (transaction_id, product_id, quantity, price))
+            return True
+        except Exception as e:
+            print(f"Error inserting transaction details: {e}")
+            return False
 
     def get_admin_emails(self):
         """Retrieve email addresses of all admin users from the Users table."""
@@ -113,11 +116,30 @@ class PaymentPageDatabase:
         """Close the database connection."""
         self.conn.close()
 
+
+def launch_cashier_window():
+    """Launch the manager window if returning fails"""
+    try:
+        cashier_script = r"C:\Users\InvenTrack-main\InvenTrack\cashier\cart.py"
+
+        if cashier_script.exists():
+            print("Opening cashier window")
+            try:
+                subprocess.run(['python', str(cashier_script)])
+            except Exception as e:
+                print(f"file not opened: {e}")
+        else:
+            messagebox.showerror("Error", "Cashier window not found!")
+    except Exception as e:
+        print(f"Error launching cashier window: {e}")
+        messagebox.showerror("Error", "Failed to open cashier window")
+
+
 class PaymentPage(ctk.CTk):
-    def __init__(self, cashier_id=1):
+    def __init__(self):
         super().__init__()
         self.db = PaymentPageDatabase()
-        self.cashier_id = cashier_id
+        self.cashier_id = self.load_cashier_id_from_cart()
         self.title("Payment Page")
         self.geometry("1920x1080")
         self.configure(fg_color="white")
@@ -150,14 +172,14 @@ class PaymentPage(ctk.CTk):
         self.header_frame = ctk.CTkFrame(self, fg_color="#2d3e50", bg_color="#2d3e50", width=1920, height=55)
         self.header_frame.place(x=0, y=0)
 
-        self.title_label = ctk.CTkLabel(self.header_frame, text=self.current_page, font=("Segoe UI", 25), text_color="#fff")
+        self.title_label = ctk.CTkLabel(self.header_frame, text=self.current_page, font=("Segoe UI", 25),
+                                        text_color="#fff")
         self.title_label.place(x=120, y=10)
 
-        # Load cart and create transaction on page load
+        # Load cart on page load
         self.cart_items = self.load_cart_items()
         if self.cart_items:
             self.calculate_total_amount()
-            self.create_initial_transaction()
         else:
             print("Cart is empty. No transaction created.")
 
@@ -170,9 +192,23 @@ class PaymentPage(ctk.CTk):
 
         self._create_main_panel()
 
+    def load_cashier_id_from_cart(self):
+        try:
+            with open(r"C:\Users\InvenTrack-main\InvenTrack\cashier\cart.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    user_ids = list(data.keys())
+                    if user_ids:
+                        return int(user_ids[0])
+        except Exception as e:
+            print(f"Failed to load cashier ID from cart.json: {e}")
+        return None
+
     def _create_sidebar(self):
-        self.sidebar = ctk.CTkFrame(self, fg_color="#2d3e50", corner_radius=0, width=self.sidebar_width, height=1080, border_width=0, border_color="#ddd")
-        ctk.CTkLabel(self.sidebar, text="InvenTrack", font=("Segoe UI", 28, "bold"), text_color="#fff").place(x=20, y=20)
+        self.sidebar = ctk.CTkFrame(self, fg_color="#2d3e50", corner_radius=0, width=self.sidebar_width, height=1080,
+                                    border_width=0, border_color="#ddd")
+        ctk.CTkLabel(self.sidebar, text="InvenTrack", font=("Segoe UI", 28, "bold"), text_color="#fff").place(x=20,
+                                                                                                              y=20)
         self.sidebar_buttons = {}
         y = 80
         for name in ["Payment Page"]:
@@ -192,7 +228,7 @@ class PaymentPage(ctk.CTk):
         self.toggle_btn = ctk.CTkButton(self, text="☰", width=45, height=45, corner_radius=0,
                                         fg_color="#2d3e50", bg_color="#2d3e50", hover_color="#2d3e50",
                                         text_color="#fff", font=("Segoe UI", 20), command=self.toggle_sidebar)
-        self.toggle_btn.place(x=12, y=6)
+        # self.toggle_btn.place(x=12, y=6)
         self.toggle_btn.lift()
 
     def _create_top_buttons(self):
@@ -254,7 +290,7 @@ class PaymentPage(ctk.CTk):
         if self.sidebar_expanded:
             collapse()
         else:
-            self.sidebar  .place(x=0, y=0)
+            self.sidebar.place(x=0, y=0)
             self.sidebar.lift()
             expand()
 
@@ -291,6 +327,10 @@ class PaymentPage(ctk.CTk):
             self.cat_buttons.append(btn)
         self.content_frame = ctk.CTkFrame(self.panel, fg_color="#fff", width=1500, height=800, corner_radius=20)
         self.content_frame.place(x=0, y=100)
+
+        self.back_button = ctk.CTkButton(self.panel, text="Back", font=("Arial", 22), width=180, height=50,
+                                         command=self.back_to_cashier)
+        self.back_button.place(x=1280, y=820)
         self.show_card_payment_fields()
 
     def select_payment_method(self, method):
@@ -312,7 +352,7 @@ class PaymentPage(ctk.CTk):
 
     def _cart_filepath(self):
         """Return the filename used to persist the cart."""
-        return Path(__file__).parent.parent / "cart.json"
+        return r"C:\Users\InvenTrack-main\InvenTrack\cashier\cart.json"
 
     def clear_cart(self):
         """Clear the cart.json file."""
@@ -354,29 +394,38 @@ class PaymentPage(ctk.CTk):
         tax_rate = 0.06
         self.total_amount = round(self.total_amount * (1 + tax_rate), 2)
 
-    def create_initial_transaction(self):
-        """Create a transaction and deduct stock on page load."""
-        try:
-            self.db.conn.execute("BEGIN TRANSACTION")
-            self.transaction_id = self.db.insert_transaction(round(self.total_amount, 2), self.cashier_id)
-            if not self.transaction_id:
-                self.db.conn.rollback()
-                messagebox.showerror("Error", "Failed to save initial transaction to the database.")
-                return
-            success, low_stock_items = self.db.deduct_stock(self.cart_items)
-            if not success:
-                self.db.conn.rollback()
-                messagebox.showerror("Error", "Failed to update product stock. Check stock quantities.")
-                self.transaction_id = None
-                return
-            self.db.conn.commit()
-            if low_stock_items:
-                self.send_low_stock_email(low_stock_items)
-            self.clear_cart()
-        except Exception as e:
-            self.db.conn.rollback()
-            messagebox.showerror("Error", f"Error creating initial transaction: {str(e)}")
-            self.transaction_id = None
+    def save_receipt_image(self, save_path="receipt.png"):
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        if hasattr(self, 'receipt_frame') and self.receipt_frame:
+            x = self.receipt_frame.winfo_rootx()
+            y = self.receipt_frame.winfo_rooty()
+            w = x + self.receipt_frame.winfo_width()
+            h = y + self.receipt_frame.winfo_height()
+            try:
+                img = ImageGrab.grab(bbox=(x, y, w, h))
+                img.save(save_path)
+                return save_path
+            except Exception as e:
+                print(f"Failed to capture receipt: {e}")
+                return None
+        return None
+
+    def create_transaction_and_deduct_stock(self, payment_method):
+        """Create transaction and deduct stock with specified payment method."""
+        receipt_path = self.save_receipt_image(f"{Path(__file__).parent}/receipts/receipt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+        transaction_id = self.db.insert_transaction(round(self.total_amount, 2), self.cashier_id, payment_method, receipt_path)
+        if not transaction_id:
+            return None, []
+
+        success, low_stock_items = self.db.deduct_stock(self.cart_items)
+        if not success:
+            return None, []
+
+        # Insert transaction details
+        if not self.db.insert_transaction_details(transaction_id, self.cart_items):
+            return None, []
+
+        return transaction_id, low_stock_items
 
     def send_low_stock_email(self, low_stock_items):
         """Send an email to all admin users with low stock alert."""
@@ -620,38 +669,53 @@ class PaymentPage(ctk.CTk):
     def show_card_payment_fields(self):
         """Display card payment fields and receipt."""
         ctk.CTkLabel(self.content_frame, text="Enter Card Details", font=("Arial", 50)).place(x=720, y=110)
-        self.receipt_frame = ctk.CTkFrame(self.content_frame, width=520, height=650, fg_color="#f0f0f0", corner_radius=10)
+        self.receipt_frame = ctk.CTkFrame(self.content_frame, width=520, height=650, fg_color="#f0f0f0",
+                                          corner_radius=10)
         self.receipt_frame.place(x=110, y=40)
         if not self.payment_completed:
             self.display_receipt(self.receipt_frame)
         else:
             self.clear_receipt_content()
-        self.credit_card_picture = ctk.CTkImage(Image.open(Path(__file__).parent / "pictures/credit card logo.png"), size=(500, 100))
-        self.credit_card_picture_label = ctk.CTkLabel(master=self.content_frame, image=self.credit_card_picture, text="")
+        self.credit_card_picture = ctk.CTkImage(Image.open(Path(__file__).parent / "pictures/credit card logo.png"),
+                                                size=(500, 100))
+        self.credit_card_picture_label = ctk.CTkLabel(master=self.content_frame, image=self.credit_card_picture,
+                                                      text="")
         self.credit_card_picture_label.place(x=700, y=10)
-        self.cardholder_label = ctk.CTkLabel(self.content_frame, text="Cardholder's Name:", font=("Arial", 24), text_color="black", anchor="w", width=200, height=40)
+        self.cardholder_label = ctk.CTkLabel(self.content_frame, text="Cardholder's Name:", font=("Arial", 24),
+                                             text_color="black", anchor="w", width=200, height=40)
         self.cardholder_label.place(x=720, y=170)
-        self.cardholder_entry = ctk.CTkEntry(self.content_frame, placeholder_text="Full Name", font=("Arial", 20), width=450, height=50)
+        self.cardholder_entry = ctk.CTkEntry(self.content_frame, placeholder_text="Full Name", font=("Arial", 20),
+                                             width=450, height=50)
         self.cardholder_entry.place(x=720, y=210)
-        self.card_label = ctk.CTkLabel(self.content_frame, text="Card Number:", font=("Arial", 24), text_color="black", anchor="w", width=100, height=40)
+        self.card_label = ctk.CTkLabel(self.content_frame, text="Card Number:", font=("Arial", 24), text_color="black",
+                                       anchor="w", width=100, height=40)
         self.card_label.place(x=720, y=270)
-        self.card_number = ctk.CTkEntry(self.content_frame, placeholder_text="Card Number", font=("Arial", 20), width=450, height=50)
+        self.card_number = ctk.CTkEntry(self.content_frame, placeholder_text="Card Number", font=("Arial", 20),
+                                        width=450, height=50)
         self.card_number.place(x=720, y=310)
-        self.expiry_date_label = ctk.CTkLabel(self.content_frame, text="Expiry Date:", font=("Arial", 24), text_color="black", anchor="w", width=100, height=40)
+        self.expiry_date_label = ctk.CTkLabel(self.content_frame, text="Expiry Date:", font=("Arial", 24),
+                                              text_color="black", anchor="w", width=100, height=40)
         self.expiry_date_label.place(x=720, y=370)
-        self.expiry_date_entry = ctk.CTkEntry(self.content_frame, placeholder_text="MM/YY", font=("Arial", 20), width=210, height=50)
+        self.expiry_date_entry = ctk.CTkEntry(self.content_frame, placeholder_text="MM/YY", font=("Arial", 20),
+                                              width=210, height=50)
         self.expiry_date_entry.place(x=720, y=410)
-        self.cvvcvc_label = ctk.CTkLabel(self.content_frame, text="CVV/CVC:", font=("Arial", 24), text_color="black", anchor="w", width=100, height=40)
+        self.cvvcvc_label = ctk.CTkLabel(self.content_frame, text="CVV/CVC:", font=("Arial", 24), text_color="black",
+                                         anchor="w", width=100, height=40)
         self.cvvcvc_label.place(x=960, y=370)
-        self.cvv = ctk.CTkEntry(self.content_frame, placeholder_text="CVV/CVC", font=("Arial", 20), show="*", width=210, height=50)
+        self.cvv = ctk.CTkEntry(self.content_frame, placeholder_text="CVV/CVC", font=("Arial", 20), show="*", width=210,
+                                height=50)
         self.cvv.place(x=960, y=410)
-        self.total_charge_label = ctk.CTkLabel(self.content_frame, text="Total Charge:", font=("Arial", 24), text_color="black", anchor="w", width=100, height=40)
+        self.total_charge_label = ctk.CTkLabel(self.content_frame, text="Total Charge:", font=("Arial", 24),
+                                               text_color="black", anchor="w", width=100, height=40)
         self.total_charge_label.place(x=720, y=470)
-        self.total_charge_entry = ctk.CTkEntry(self.content_frame, placeholder_text=f"RM {self.total_amount:.2f}", font=("Arial", 20), width=450, height=50)
+        self.total_charge_entry = ctk.CTkEntry(self.content_frame, placeholder_text=f"RM {self.total_amount:.2f}",
+                                               font=("Arial", 20), width=450, height=50)
         self.total_charge_entry.place(x=720, y=510)
-        self.pay_button = ctk.CTkButton(self.content_frame, text="Pay Now", font=("Arial", 25), text_color="white", fg_color="#2d3e50", command=self.process_card_payment, width=200, height=60)
+        self.pay_button = ctk.CTkButton(self.content_frame, text="Pay Now", font=("Arial", 25), text_color="white",
+                                        fg_color="#2d3e50", command=self.process_card_payment, width=200, height=60)
         self.pay_button.place(x=850, y=600)
-        self.status_label = ctk.CTkLabel(self.content_frame, text="", font=("Arial", 16), text_color="red", wraplength=400)
+        self.status_label = ctk.CTkLabel(self.content_frame, text="", font=("Arial", 16), text_color="red",
+                                         wraplength=400)
         self.status_label.place(x=720, y=560)
         self.view_receipt_button = ctk.CTkButton(
             self.content_frame,
@@ -668,8 +732,10 @@ class PaymentPage(ctk.CTk):
 
     def show_touchngo_payment_fields(self):
         """Display Touch'N Go payment fields and receipt."""
-        ctk.CTkLabel(self.content_frame, text="Touch'N Go E-Wallet Payment", font=("Arial", 50), wraplength=500).place(x=900, y=50)
-        self.touch_n_go_logo = ctk.CTkImage(Image.open(Path(__file__).parent / "pictures/Touch_'n_Go_eWallet_logo.png"), size=(150, 150))
+        ctk.CTkLabel(self.content_frame, text="Touch'N Go E-Wallet Payment", font=("Arial", 50), wraplength=500).place(
+            x=900, y=50)
+        self.touch_n_go_logo = ctk.CTkImage(Image.open(Path(__file__).parent / "pictures/Touch_'n_Go_eWallet_logo.png"),
+                                            size=(150, 150))
         self.touch_n_go_logo_label = ctk.CTkLabel(master=self.content_frame, image=self.touch_n_go_logo, text="")
         self.touch_n_go_logo_label.place(x=720, y=20)
 
@@ -715,7 +781,8 @@ class PaymentPage(ctk.CTk):
         qr_label = ctk.CTkLabel(self.content_frame, image=qr_ctk_image, text="")
         qr_label.place(x=860, y=180)
 
-        self.receipt_frame = ctk.CTkFrame(self.content_frame, width=520, height=650, fg_color="#f0f0f0", corner_radius=10)
+        self.receipt_frame = ctk.CTkFrame(self.content_frame, width=520, height=650, fg_color="#f0f0f0",
+                                          corner_radius=10)
         self.receipt_frame.place(x=110, y=40)
         if not self.payment_completed:
             self.display_receipt(self.receipt_frame)
@@ -729,23 +796,35 @@ class PaymentPage(ctk.CTk):
                 messagebox.showinfo("Payment Already Made", "You have already made your payment.")
                 return
             try:
-                self.db.conn.execute("BEGIN TRANSACTION")
-                if not self.transaction_id:
-                    self.tng_status_label.configure(text="No transaction ID available.", text_color="red")
-                    messagebox.showerror("Error", "No transaction ID available. Please restart the transaction.")
-                    self.db.conn.rollback()
-                    return
+                # Start transaction
+                self.db.conn.execute("BEGIN")
+
+                # Create transaction and deduct stock
+                transaction_id, low_stock_items = self.create_transaction_and_deduct_stock("Touch'N Go")
+                if transaction_id is None:
+                    raise Exception("Transaction failed")
+
+                # Commit transaction
                 self.db.conn.commit()
+
+                # Update UI
+                self.transaction_id = transaction_id
                 self.tng_status_label.configure(text="Payment confirmed. Thank you!", text_color="green")
                 self.payment_completed = True
+                self.clear_cart()
                 self.clear_receipt_content()
                 self.view_receipt_button.configure(state="normal")
+
+                # Send low stock email AFTER commit
+                if low_stock_items:
+                    self.send_low_stock_email(low_stock_items)
+
             except Exception as e:
                 self.db.conn.rollback()
                 self.tng_status_label.configure(text="Payment processing failed.", text_color="red")
-                messagebox.showerror("Error", f"Payment processing failed: {str(e)}")
 
-        confirm_btn = ctk.CTkButton(self.content_frame, text="Confirm Payment", width=240, height=60, fg_color="#2d3e50", font=("Arial", 24), command=confirm_payment)
+        confirm_btn = ctk.CTkButton(self.content_frame, text="Confirm Payment", width=240, height=60,
+                                    fg_color="#2d3e50", font=("Arial", 24), command=confirm_payment)
         confirm_btn.place(x=930, y=590)
         self.view_receipt_button = ctk.CTkButton(
             self.content_frame,
@@ -763,13 +842,16 @@ class PaymentPage(ctk.CTk):
     def show_cash_payment_fields(self):
         """Display cash payment fields and receipt."""
         ctk.CTkLabel(self.content_frame, text="Cash Payment", font=("Arial", 36)).place(x=810, y=40)
-        self.receipt_frame = ctk.CTkFrame(self.content_frame, width=520, height=650, fg_color="#f0f0f0", corner_radius=10)
+        self.receipt_frame = ctk.CTkFrame(self.content_frame, width=520, height=650, fg_color="#f0f0f0",
+                                          corner_radius=10)
         self.receipt_frame.place(x=110, y=40)
         if not self.payment_completed:
             self.display_receipt(self.receipt_frame)
         else:
             self.clear_receipt_content()
-        self.cash_entry = ctk.CTkEntry(self.content_frame, placeholder_text=f"Enter Amount (RM {self.total_amount:.2f})", width=300, height=50, font=("Arial", 24))
+        self.cash_entry = ctk.CTkEntry(self.content_frame,
+                                       placeholder_text=f"Enter Amount (RM {self.total_amount:.2f})", width=300,
+                                       height=50, font=("Arial", 24))
         self.cash_entry.place(x=780, y=100)
         self.cash_status_label = ctk.CTkLabel(self.content_frame, text="", font=("Arial", 18))
         self.cash_status_label.place(x=780, y=155)
@@ -794,182 +876,209 @@ class PaymentPage(ctk.CTk):
             try:
                 value = float(self.cash_entry.get())
                 if value <= 0:
-                    self.cash_status_label.configure(text="Amount must be greater than 0.", text_color="red")
-                    return
-                if abs(value - self.total_amount) > 0.01:
-                    if value < self.total_amount:
-                        remaining = self.total_amount - value
-                        self.cash_status_label.configure(text=f"Insufficient payment. RM {remaining:.2f} needed.", text_color="orange")
-                        return
-                    else:
-                        self.db.conn.execute("BEGIN TRANSACTION")
-                        if not self.transaction_id:
-                            self.cash_status_label.configure(text="No transaction ID available.", text_color="red")
-                            messagebox.showerror("Error", "No transaction ID available. Please restart the transaction.")
-                            self.db.conn.rollback()
-                            return
-                        self.db.conn.commit()
-                        change = value - self.total_amount
-                        self.cash_status_label.configure(
-                            text=f"Payment received. Change: RM {change:.2f}" if change > 0 else "Exact amount received. Thank you!",
-                            text_color="green"
-                        )
-                        self.payment_completed = True
-                        self.clear_receipt_content()
-                        self.view_receipt_button.configure(state="normal")
-                else:
-                    self.db.conn.execute("BEGIN TRANSACTION")
-                    if not self.transaction_id:
-                        self.cash_status_label.configure(text="No transaction ID available.", text_color="red")
-                        messagebox.showerror("Error", "No transaction ID available. Please restart the transaction.")
-                        self.db.conn.rollback()
-                        return
-                    self.db.conn.commit()
-                    self.cash_status_label.configure(text="Exact amount received. Thank you!", text_color="green")
-                    self.payment_completed = True
-                    self.clear_receipt_content()
-                    self.view_receipt_button.configure(state="normal")
-            except ValueError:
-                self.cash_status_label.configure(text="Please enter a valid number.", text_color="red")
+                    raise ValueError("Amount must be positive")
 
-        btn_x, btn_y = 800, 200
-        buttons = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0"]
-        for i, char in enumerate(buttons):
-            row = i // 3
-            col = i % 3
-            if char == "0":
-                row = 3
-                col = 1
-            elif char == ".":
-                row = 3
-                col = 0
-            btn = ctk.CTkButton(self.content_frame, text=char, width=80, height=60, font=("Arial", 20), text_color="#fff",
-                                border_color="black", border_width=1, fg_color="#2d3e50",
-                                command=lambda c=char: add_char(c))
-            btn.place(x=btn_x + col * 90, y=btn_y + row * 70)
-        clear_btn = ctk.CTkButton(self.content_frame, text="Clear", width=80, height=60, font=("Arial", 20),
-                                  text_color="#fff", border_color="black", border_width=1, fg_color="#2d3e50",
-                                  command=clear_entry)
-        clear_btn.place(x=btn_x + 2 * 90, y=btn_y + 3 * 70)
-        pay_btn = ctk.CTkButton(self.content_frame, text="Pay", width=260, height=60, font=("Arial", 20),
-                                text_color="#fff", border_color="black", border_width=1, fg_color="#2d3e50",
-                                command=process_cash_payment)
-        pay_btn.place(x=btn_x, y=btn_y + 4 * 70)
+                if value < self.total_amount:
+                    raise ValueError(
+                        f"Amount received (RM {value:.2f}) is less than total (RM {self.total_amount:.2f})")
+
+                # Start transaction
+                self.db.conn.execute("BEGIN")
+
+                # Create transaction and deduct stock
+                transaction_id, low_stock_items = self.create_transaction_and_deduct_stock("Cash")
+                if transaction_id is None:
+                    raise Exception("Transaction failed")
+
+                # Commit transaction
+                self.db.conn.commit()
+
+                # Update UI
+                self.transaction_id = transaction_id
+                change = value - self.total_amount
+                self.cash_status_label.configure(
+                    text=f"Payment received. Change: RM {change:.2f}",
+                    text_color="green"
+                )
+                self.payment_completed = True
+                self.clear_cart()
+                self.clear_receipt_content()
+                self.view_receipt_button.configure(state="normal")
+
+                # Send low stock email AFTER commit
+                if low_stock_items:
+                    self.send_low_stock_email(low_stock_items)
+
+            except ValueError as e:
+                self.cash_status_label.configure(text=str(e), text_color="red")
+            except Exception as e:
+                self.db.conn.rollback()
+                self.cash_status_label.configure(
+                    text=f"Payment processing failed: {str(e)}",
+                    text_color="red"
+                )
+
+        # Number pad
+        btn_width = 80
+        btn_height = 60
+        pad_x = 780
+        pad_y = 200
+        gap = 10
+
+        for i in range(1, 10):
+            row = (i - 1) // 3
+            col = (i - 1) % 3
+            btn = ctk.CTkButton(
+                self.content_frame,
+                text=str(i),
+                width=btn_width,
+                height=btn_height,
+                font=("Arial", 24),
+                command=lambda n=str(i): add_char(n)
+            )
+            btn.place(x=pad_x + col * (btn_width + gap), y=pad_y + row * (btn_height + gap))
+
+        # Zero and decimal buttons
+        zero_btn = ctk.CTkButton(
+            self.content_frame,
+            text="0",
+            width=btn_width,
+            height=btn_height,
+            font=("Arial", 24),
+            command=lambda: add_char("0")
+        )
+        zero_btn.place(x=pad_x + (btn_width + gap), y=pad_y + 3 * (btn_height + gap))
+
+        decimal_btn = ctk.CTkButton(
+            self.content_frame,
+            text=".",
+            width=btn_width,
+            height=btn_height,
+            font=("Arial", 24),
+            command=lambda: add_char(".")
+        )
+        decimal_btn.place(x=pad_x + 2 * (btn_width + gap), y=pad_y + 3 * (btn_height + gap))
+
+        # Clear button
+        clear_btn = ctk.CTkButton(
+            self.content_frame,
+            text="C",
+            width=btn_width,
+            height=btn_height,
+            font=("Arial", 24),
+            fg_color="#f44336",
+            command=clear_entry
+        )
+        clear_btn.place(x=pad_x, y=pad_y + 3 * (btn_height + gap))
+
+        # Pay button
+        pay_btn = ctk.CTkButton(
+            self.content_frame,
+            text="Confirm Payment",
+            width=3 * btn_width + 2 * gap,
+            height=btn_height,
+            font=("Arial", 24),
+            fg_color="#2d3e50",
+            command=process_cash_payment
+        )
+        pay_btn.place(x=pad_x, y=pad_y + 4 * (btn_height + gap))
+
         self.view_receipt_button = ctk.CTkButton(
             self.content_frame,
             text="View Receipt",
-            font=("Arial", 20),
-            text_color="#fff",
-            border_color="black",
-            border_width=1,
+            font=("Arial", 24),
+            text_color="white",
             fg_color="#2d3e50",
             command=self.view_receipt,
-            width=260,
-            height=60,
+            width=3 * btn_width + 2 * gap,
+            height=btn_height,
             state="normal" if self.payment_completed else "disabled"
         )
-        self.view_receipt_button.place(x=btn_x, y=btn_y + 5 * 70)
+        self.view_receipt_button.place(x=pad_x, y=pad_y + 5 * (btn_height + gap))
 
     def process_card_payment(self):
-        """Process card payment using existing TransactionID."""
+        """Process card payment with validation."""
         if self.payment_completed:
-            messagebox.showinfo("Payment Already Made", "You have already made your payment.")
+            messagebox.showinfo("Payment Already Made", "Payment has already been made.")
             return
 
-        self.status_label.configure(text="")
         cardholder_name = self.cardholder_entry.get().strip()
-        card_number = self.card_number.get().replace(" ", "").strip()
-        expiry = self.expiry_date_entry.get().strip()
+        card_number = self.card_number.get().strip().replace(" ", "")
+        expiry_date = self.expiry_date_entry.get().strip()
         cvv = self.cvv.get().strip()
-        total = self.total_charge_entry.get().replace("RM ", "").strip()
 
-        if not all([cardholder_name, card_number, expiry, cvv, total]):
-            self.status_label.configure(text="Please fill in all fields.", text_color="red")
-            messagebox.showerror("Error", "All fields are required.")
+        # Validate fields
+        if not all([cardholder_name, card_number, expiry_date, cvv]):
+            self.status_label.configure(text="Please fill in all fields", text_color="red")
             return
 
-        if len(cardholder_name) < 2 or len(cardholder_name) > 50:
-            self.status_label.configure(text="Name must be 2-50 characters.", text_color="red")
-            messagebox.showerror("Error", "Cardholder's name must be between 2 and 50 characters.")
+        if not re.match(r"^\d{16}$", card_number):
+            self.status_label.configure(text="Invalid card number (16 digits required)", text_color="red")
             return
-        if not re.match(r'^[A-Za-z\s]+$', cardholder_name):
-            self.status_label.configure(text="Name must contain only letters and spaces.", text_color="red")
-            messagebox.showerror("Error", "Cardholder's name must contain only letters and spaces.")
+
+        if not re.match(r"^(0[1-9]|1[0-2])\/?([0-9]{2})$", expiry_date):
+            self.status_label.configure(text="Invalid expiry date (MM/YY format)", text_color="red")
             return
-        if not card_number.isdigit() or len(card_number) != 16:
-            self.status_label.configure(text="Card number must be 16 digits.", text_color="red")
-            messagebox.showerror("Error", "Please enter a valid 16-digit card number.")
-            return
-        if len(expiry) != 5 or expiry[2] != "/" or not expiry.replace("/", "").isdigit():
-            self.status_label.configure(text="Expiry date must be in MM/YY format.", text_color="red")
-            messagebox.showerror("Error", "Please enter a valid expiry date in MM/YY format.")
-            return
-        try:
-            month, year = map(int, expiry.split("/"))
-            current_year = datetime.now().year % 100
-            current_month = datetime.now().month
-            if not (1 <= month <= 12) or year < current_year or (year == current_year and month < current_month):
-                self.status_label.configure(text="Expiry date must be in the future.", text_color="red")
-                messagebox.showerror("Error", "Please enter a valid expiry date in the future.")
-                return
-        except ValueError:
-            self.status_label.configure(text="Invalid expiry date format.", text_color="red")
-            messagebox.showerror("Error", "Invalid expiry date format.")
-            return
-        if not cvv.isdigit() or len(cvv) != 3:
-            self.status_label.configure(text="CVV must be 3 digits.", text_color="red")
-            messagebox.showerror("Error", "Please enter a valid 3-digit CVV.")
-            return
-        try:
-            total_value = float(total)
-            if total_value <= 0:
-                self.status_label.configure(text="Total must be greater than 0.", text_color="red")
-                messagebox.showerror("Error", "Please enter a valid total amount.")
-                return
-            if abs(total_value - self.total_amount) > 0.01:
-                self.status_label.configure(text=f"Total must be RM {self.total_amount:.2f}.", text_color="red")
-                messagebox.showerror("Error", f"Total amount must match: RM {self.total_amount:.2f}.")
-                return
-        except ValueError:
-            self.status_label.configure(text="Total must be a valid number.", text_color="red")
-            messagebox.showerror("Error", "Please enter a valid total amount.")
+
+        if not re.match(r"^\d{3,4}$", cvv):
+            self.status_label.configure(text="Invalid CVV (3-4 digits required)", text_color="red")
             return
 
         try:
-            self.db.conn.execute("BEGIN TRANSACTION")
-            if not self.transaction_id:
-                self.status_label.configure(text="No transaction ID available.", text_color="red")
-                messagebox.showerror("Error", "No transaction ID available. Please restart the transaction.")
-                self.db.conn.rollback()
-                return
+            # Start transaction
+            self.db.conn.execute("BEGIN")
 
-            cardholder_name_hashed = bcrypt.hashpw(cardholder_name.encode(), bcrypt.gensalt())
-            card_number_hashed = bcrypt.hashpw(card_number.encode(), bcrypt.gensalt())
-            expiry_hashed = bcrypt.hashpw(expiry.encode(), bcrypt.gensalt())
-            cvv_hashed = bcrypt.hashpw(cvv.encode(), bcrypt.gensalt())
-            if not self.db.insert_card_payment(
-                    self.transaction_id,
-                    cardholder_name_hashed,
-                    card_number_hashed,
-                    expiry_hashed,
-                    cvv_hashed
-            ):
-                self.db.conn.rollback()
-                self.status_label.configure(text="Failed to save payment details.", text_color="red")
-                messagebox.showerror("Error", "Failed to save payment details.")
-                return
+            # Create transaction
+            receipt_path = self.save_receipt_image(
+                f"{Path(__file__).parent}/receipts/receipt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            )
+            transaction_id = self.db.insert_transaction(
+                round(self.total_amount, 2),
+                self.cashier_id,
+                "Card",
+                receipt_path
+            )
 
+            if not transaction_id:
+                raise Exception("Failed to create transaction")
+
+            # Deduct stock and insert details
+            success, low_stock_items = self.db.deduct_stock(self.cart_items)
+            if not success:
+                raise Exception("Failed to update stock")
+
+            # Insert transaction details
+            if not self.db.insert_transaction_details(transaction_id, self.cart_items):
+                raise Exception("Failed to save transaction details")
+
+            # Commit transaction
             self.db.conn.commit()
-            self.status_label.configure(text="Payment confirmed. Thank you!", text_color="green")
-            messagebox.showinfo("Success", "Payment processed successfully!")
+
+            # Update UI
+            self.transaction_id = transaction_id
+            self.status_label.configure(text="Payment successful!", text_color="green")
             self.payment_completed = True
+            self.clear_cart()
             self.clear_receipt_content()
             self.view_receipt_button.configure(state="normal")
+
+            # Send low stock email AFTER commit
+            if low_stock_items:
+                self.send_low_stock_email(low_stock_items)
+
         except Exception as e:
             self.db.conn.rollback()
-            self.status_label.configure(text="Payment processing failed.", text_color="red")
-            messagebox.showerror("Error", f"Payment processing failed: {str(e)}")
+            self.status_label.configure(text=f"Payment failed: {str(e)}", text_color="red")
+            messagebox.showerror("Payment Error", f"Payment processing failed: {str(e)}")
+
+    def back_to_cashier(self):
+        """Return to the cashier window (cart)"""
+        self.db.close()
+        self.destroy()  # Close the current payment window
+        cart_app = POSApp()  # Create the cart application
+        cart_app.mainloop()  # Run the cart application
+
 
 if __name__ == "__main__":
-    app = PaymentPage(cashier_id=1)
+    app = PaymentPage()
     app.mainloop()
