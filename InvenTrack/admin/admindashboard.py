@@ -257,7 +257,7 @@ class Header(ctk.CTkFrame):
         self.toggle_btn.place(x=12, y=6)
 
         try:
-            logo_img = Image.open(r"C:\Users\InvenTrack-main\InvenTrack\admin\assets\frame0\logo_header.png")
+            logo_img = Image.open(Path(__file__).parent / "assets/frame0/logo_header.png")
             logo_img = logo_img.resize((40, 40))  # Resize as needed
             self.logo_photo = ImageTk.PhotoImage(logo_img)
             self.logo_label = ctk.CTkLabel(self, image=self.logo_photo, text="")
