@@ -13,13 +13,15 @@ from io import BytesIO
 import qrcode
 import io
 import json
+from pathlib import Path
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import threading
 import tkinter.messagebox as messagebox
 
-DB_PATH = "inventoryproject.db"
+
+DB_PATH = Path(__file__).parent.parent / "inventoryproject.db"
 
 PRIMARY = "#4361ee"
 SECONDARY = "#3a0ca3"
@@ -29,17 +31,22 @@ WARNING = "#f72585"
 BG_LIGHT = "#f8f9fa"
 CARD_BG = "#ffffff"
 
-with open("user_session.json", "r", encoding="utf-8") as uf:
+with open(Path(__file__).parent.parent / "user_session.json", "r", encoding="utf-8") as uf:
     _USER_INFO = json.load(uf)
 
 # assuming your JSON uses "id" for the logged‐in user’s numeric ID:
-CURRENT_USER_ID   = int(_USER_INFO["id"])
-_CURRENT_USERNAME = _USER_INFO.get("username") or _USER_INFO.get("name", "User")
+try:
+    CURRENT_USER_ID   = int(_USER_INFO["UserID"])
+except Exception as e:
+    print(f"Error obtaining User ID: {e}")
+    pass
+
+_CURRENT_USERNAME = _USER_INFO.get("Username") or _USER_INFO.get("name", "User")
 
 def get_current_username() -> str:
     """Fetch the username for CURRENT_USER_ID from inventoryproject.db."""
     try:
-        conn = sqlite3.connect("inventoryproject.db")
+        conn = sqlite3.connect(Path(__file__).parent.parent / "inventoryproject.db")
         cur  = conn.cursor()
         cur.execute(
             "SELECT Username FROM user WHERE UserID = ?",
@@ -146,13 +153,12 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 SENDER_EMAIL = "zclau4321@gmail.com"  # Replace with your email
 SENDER_PASSWORD = "raqc juni yrvu rmov"  # Replace with your app password
-RECEIVER_EMAIL = "zclau4321@gmail.com"
 
 
 def show_contact_manager_popup(product_id, product_name):
     """Popup window for contacting the manager about a product"""
     contact_win = ctk.CTkToplevel()
-    contact_win.title(f"Contact Manager - {product_name}")
+    contact_win.title(f"Contact Admin - {product_name}")
     contact_win.geometry("600x500")
     contact_win.resizable(False, False)
     contact_win.attributes("-topmost", True)
@@ -173,8 +179,8 @@ def show_contact_manager_popup(product_id, product_name):
 
     ctk.CTkLabel(
         header_frame,
-        text=f"Contact Manager about:",
-        font=("Segoe UI", 20, "bold"),
+        text=f"Contact Admin about:",
+        font=("Acumin Pro", 20, "bold"),
         text_color="#2d3e50",
         anchor="w"
     ).pack(fill="x")
@@ -182,7 +188,7 @@ def show_contact_manager_popup(product_id, product_name):
     ctk.CTkLabel(
         header_frame,
         text=f"{product_name} (ID: {product_id})",
-        font=("Segoe UI", 16),
+        font=("Acumin Pro", 16),
         text_color="#666666",
         anchor="w"
     ).pack(fill="x", pady=(5, 10))
@@ -194,13 +200,13 @@ def show_contact_manager_popup(product_id, product_name):
     ctk.CTkLabel(
         msg_frame,
         text="Your Message:",
-        font=("Segoe UI", 14, "bold"),
+        font=("Acumin Pro", 14, "bold"),
         text_color="#444",
         anchor="w"
     ).pack(fill="x", pady=(0, 5))
 
     # Multi-line text entry
-    textbox = ctk.CTkTextbox(msg_frame, font=("Segoe UI", 14))
+    textbox = ctk.CTkTextbox(msg_frame, font=("Acumin Pro", 14))
     textbox.pack(fill="both", expand=True, pady=(0, 10))
 
     # Add placeholder text
@@ -215,7 +221,7 @@ def show_contact_manager_popup(product_id, product_name):
         status_frame,
         text="",
         text_color="#28a745",
-        font=("Segoe UI", 12)
+        font=("Acumin Pro", 12)
     )
     contact_win.status_label.pack()
 
@@ -227,7 +233,7 @@ def show_contact_manager_popup(product_id, product_name):
     contact_win.cancel_btn = ctk.CTkButton(
         btn_frame,
         text="Cancel",
-        font=("Segoe UI", 14, "bold"),
+        font=("Acumin Pro", 14, "bold"),
         fg_color="#6c757d",
         hover_color="#5a6268",
         command=contact_win.destroy
@@ -238,7 +244,7 @@ def show_contact_manager_popup(product_id, product_name):
     contact_win.send_btn = ctk.CTkButton(
         btn_frame,
         text="Send Message",
-        font=("Segoe UI", 14, "bold"),
+        font=("Acumin Pro", 14, "bold"),
         fg_color="#28a745",
         hover_color="#218838",
         command=lambda: threading.Thread(
@@ -262,7 +268,7 @@ def show_contact_manager_popup(product_id, product_name):
 
 
 def send_contact_message(product_id, product_name, message, window):
-    """Send contact message to manager via email"""
+    """Send contact message to all admin users via email"""
     # Disable buttons during sending
     window.after(0, lambda: window.send_btn.configure(state="disabled"))
     window.after(0, lambda: window.cancel_btn.configure(state="disabled"))
@@ -279,13 +285,25 @@ def send_contact_message(product_id, product_name, message, window):
         return
 
     try:
-        # Create email message
-        msg = MIMEMultipart()
-        msg['From'] = SENDER_EMAIL
-        msg['To'] = RECEIVER_EMAIL
-        msg['Subject'] = f"Product Inquiry: {product_name} (ID: {product_id})"
+        # Connect to SQLite database
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-        # Create HTML email body
+        # Fetch all admin emails
+        cursor.execute("SELECT email FROM User WHERE role = 'Admin'")
+        admin_emails = [row[0] for row in cursor.fetchall()]
+        conn.close()
+
+        if not admin_emails:
+            window.after(0, lambda: window.status_label.configure(
+                text="No admin users found!",
+                text_color="#dc3545"
+            ))
+            window.after(0, lambda: window.send_btn.configure(state="normal"))
+            window.after(0, lambda: window.cancel_btn.configure(state="normal"))
+            return
+
+        # Create HTML email body (same for all recipients)
         html = f"""
         <html>
           <body>
@@ -301,28 +319,52 @@ def send_contact_message(product_id, product_name, message, window):
         </html>
         """
 
-        msg.attach(MIMEText(html, "html"))
+        failed_recipients = []
+        success_count = 0
 
-        # Connect to SMTP server and send
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
+        # Send email to each admin individually
+        for email in admin_emails:
+            try:
+                # Create email message for current recipient
+                msg = MIMEMultipart()
+                msg['From'] = SENDER_EMAIL
+                msg['To'] = email
+                msg['Subject'] = f"Product Inquiry: {product_name} (ID: {product_id})"
+                msg.attach(MIMEText(html, "html"))
 
-        # Update UI on success
-        window.after(0, lambda: window.status_label.configure(
-            text="✓ Message sent successfully!",
-            text_color="#28a745"
-        ))
+                # Connect to SMTP server and send
+                with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                    server.starttls()
+                    server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                    server.send_message(msg)
 
-        # Close window after delay
-        window.after(2500, window.destroy)
+                success_count += 1
+
+            except Exception as e:
+                failed_recipients.append(email)
+                print(f"Failed to send to {email}: {str(e)}")
+
+        # Update UI based on results
+        if not failed_recipients:
+            # Success for all recipients
+            window.after(0, lambda: window.status_label.configure(
+                text=f"✓ Message sent to {success_count} admin(s) successfully!",
+                text_color="#28a745"
+            ))
+            window.after(2500, window.destroy)
+        else:
+            # Partial success/failure
+            error_msg = f"Sent to {success_count}/{len(admin_emails)} admins. Failed for: {', '.join(failed_recipients[:3])}{'...' if len(failed_recipients) > 3 else ''}"
+            window.after(0, lambda: window.status_label.configure(
+                text=f"⚠️ {error_msg}",
+                text_color="#ffc107"
+            ))
+            window.after(0, lambda: window.send_btn.configure(state="normal"))
+            window.after(0, lambda: window.cancel_btn.configure(state="normal"))
 
     except Exception as e:
-        error_msg = f"Failed to send message: {str(e)}"
+        error_msg = f"Failed to send messages: {str(e)}"
         print(error_msg)
-
-        # Update UI on error
         window.after(0, lambda: window.status_label.configure(
             text=f"✗ {error_msg}",
             text_color="#dc3545"
@@ -375,7 +417,7 @@ def show_product_details(product_id):
     ctk.CTkLabel(
         header_frame,
         text=name,
-        font=("Segoe UI", 24, "bold"),
+        font=("Acumin Pro", 24, "bold"),
         text_color="#2d3e50",
         anchor="w"
     ).pack(fill="x")
@@ -383,7 +425,7 @@ def show_product_details(product_id):
     ctk.CTkLabel(
         header_frame,
         text=f"ID: {pid} | Category: {category}",
-        font=("Segoe UI", 16),
+        font=("Acumin Pro", 16),
         text_color="#666666",
         anchor="w"
     ).pack(fill="x", pady=(5, 0))
@@ -614,7 +656,7 @@ def show_product_details(product_id):
         ctk.CTkLabel(
             details_frame,
             text=label + ":",
-            font=("Segoe UI", 14, "bold"),
+            font=("Acumin Pro", 14, "bold"),
             text_color="#444",
             anchor="w",
             width=150
@@ -624,7 +666,7 @@ def show_product_details(product_id):
         ctk.CTkLabel(
             details_frame,
             text=str(value),
-            font=("Segoe UI", 14),
+            font=("Acumin Pro", 14),
             text_color="#333",
             anchor="w"
         ).grid(row=i, column=1, padx=5, pady=5, sticky="w")
@@ -633,11 +675,11 @@ def show_product_details(product_id):
     btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
     btn_frame.pack(fill="x", padx=20, pady=10)
 
-    # NEW: Contact Manager button (left)
+    # NEW: Contact Admin button (left)
     contact_btn = ctk.CTkButton(
         btn_frame,
-        text="Contact Manager",
-        font=("Segoe UI", 14, "bold"),
+        text="Contact Admin",
+        font=("Acumin Pro", 14, "bold"),
         fg_color="#007bff",  # Blue color
         hover_color="#0069d9",
         command=lambda: show_contact_manager_popup(pid, name)
@@ -648,7 +690,7 @@ def show_product_details(product_id):
     close_btn = ctk.CTkButton(
         btn_frame,
         text="Close",
-        font=("Segoe UI", 14, "bold"),
+        font=("Acumin Pro", 14, "bold"),
         fg_color="#2d3e50",
         hover_color="#3c4f63",
         command=detail_win.destroy
@@ -962,7 +1004,7 @@ def create_dashboard_widgets(parent):
     lbl_welcome = ctk.CTkLabel(
         summary_frame,
         text=f"👋 Welcome, {username}",
-        font=("Segoe UI", 22, "bold"),
+        font=("Acumin Pro", 22, "bold"),
         text_color="white"
     )
     lbl_welcome.grid(row=0, column=0, padx=10, pady=10, sticky="w")
@@ -971,7 +1013,7 @@ def create_dashboard_widgets(parent):
     lbl_txn = ctk.CTkLabel(
         summary_frame,
         text=f"📊 Today Transaction: {txn_count}",
-        font=("Segoe UI", 22, "bold"),
+        font=("Acumin Pro", 22, "bold"),
         text_color="white"
     )
     lbl_txn.grid(row=0, column=2, padx=20, pady=10, sticky="e")
@@ -980,7 +1022,7 @@ def create_dashboard_widgets(parent):
     lbl_sales = ctk.CTkLabel(
         summary_frame,
         text=f"💰 Daily Sales: RM {total_sales:.2f}",
-        font=("Segoe UI", 22, "bold"),
+        font=("Acumin Pro", 22, "bold"),
         text_color="white"
     )
     lbl_sales.grid(row=0, column=3, padx=10, pady=10, sticky="e")
@@ -1007,7 +1049,7 @@ def create_dashboard_widgets(parent):
     title_label = ctk.CTkLabel(
         header_frame,
         text="Low Stock Alerts",
-        font=("Segoe UI", 16, "bold"),
+        font=("Acumin Pro", 16, "bold"),
         text_color="#2d3e50",
         anchor="w"
     )
@@ -1020,7 +1062,7 @@ def create_dashboard_widgets(parent):
     ctk.CTkLabel(
         view_frame,
         text="View:",
-        font=("Segoe UI", 13),
+        font=("Acumin Pro", 13),
         text_color="#555"
     ).pack(side="left", padx=(0, 8), pady=0)
 
@@ -1029,7 +1071,7 @@ def create_dashboard_widgets(parent):
         view_frame,
         values=["Low Stock Only", "All Products"],
         variable=view_var,
-        font=("Segoe UI", 12),
+        font=("Acumin Pro", 12),
         width=130,
         height=26,
         fg_color="#ffffff",
@@ -1074,7 +1116,7 @@ def create_dashboard_widgets(parent):
             ctk.CTkLabel(
                 empty_frame,
                 text="🎉 All products are well-stocked!" if mode == "Low Stock Only" else "No products found",
-                font=("Segoe UI", 16),
+                font=("Acumin Pro", 16),
                 text_color="#777"
             ).pack(pady=10)
 
@@ -1159,7 +1201,7 @@ def create_dashboard_widgets(parent):
             name_label = ctk.CTkLabel(
                 text_frame,
                 text=name,
-                font=("Segoe UI", 15),
+                font=("Acumin Pro", 15),
                 text_color="#2d3e50",
                 anchor="w",
                 wraplength=180
@@ -1170,7 +1212,7 @@ def create_dashboard_widgets(parent):
             details_label = ctk.CTkLabel(
                 text_frame,
                 text=details,
-                font=("Segoe UI", 13),
+                font=("Acumin Pro", 13),
                 text_color="#777",
                 anchor="w"
             )
@@ -1208,7 +1250,7 @@ def create_dashboard_widgets(parent):
             stock_label = ctk.CTkLabel(
                 stock_num_frame,
                 text=f"{qty}",
-                font=("Segoe UI", 16, "bold"),
+                font=("Acumin Pro", 16, "bold"),
                 text_color="#e63946" if is_low else "#2a9d8f",
             )
             stock_label.pack(side="left", padx=(0, 5))
@@ -1218,7 +1260,7 @@ def create_dashboard_widgets(parent):
                 low_label = ctk.CTkLabel(
                     stock_num_frame,
                     text="LOW STOCK",
-                    font=("Segoe UI", 11, "bold"),
+                    font=("Acumin Pro", 11, "bold"),
                     text_color="#ffffff",
                     fg_color="#e63946",
                     corner_radius=4,
@@ -1231,7 +1273,7 @@ def create_dashboard_widgets(parent):
             stock_text = ctk.CTkLabel(
                 stock_frame,
                 text="in stock",
-                font=("Segoe UI", 11),
+                font=("Acumin Pro", 11),
                 text_color="#777"
             )
             stock_text.pack()
@@ -1268,7 +1310,7 @@ def create_dashboard_widgets(parent):
     lbl_txn_header = ctk.CTkLabel(
         right_frame,
         text="Transaction History",
-        font=("Segoe UI", 20, "bold"),
+        font=("Acumin Pro", 20, "bold"),
         text_color="#333"
     )
     lbl_txn_header.grid(row=0, column=0, padx=10, pady=(10, 5), sticky="w")
@@ -1283,7 +1325,7 @@ def create_dashboard_widgets(parent):
     lbl_txn_id = ctk.CTkLabel(
         search_frame,
         text="Transaction ID:",
-        font=("Segoe UI", 16),   # 16 pt for bigger text
+        font=("Acumin Pro", 16),   # 16 pt for bigger text
         text_color="#333"
     )
     lbl_txn_id.grid(row=0, column=0, padx=(8, 2), pady=5, sticky="w")
@@ -1291,7 +1333,7 @@ def create_dashboard_widgets(parent):
     entry_txn_id = ctk.CTkEntry(
         search_frame,
         textvariable=txn_id_var,
-        font=("Segoe UI", 14),
+        font=("Acumin Pro", 14),
         placeholder_text="e.g. 12345"
     )
     entry_txn_id.grid(row=0, column=1, padx=(2, 10), pady=5, sticky="w")
@@ -1299,7 +1341,7 @@ def create_dashboard_widgets(parent):
     lbl_from = ctk.CTkLabel(
         search_frame,
         text="From:",
-        font=("Segoe UI", 16),   # 16 pt
+        font=("Acumin Pro", 16),   # 16 pt
         text_color="#333"
     )
     lbl_from.grid(row=0, column=2, padx=(8, 2), pady=5, sticky="w")
@@ -1308,7 +1350,7 @@ def create_dashboard_widgets(parent):
         search_frame,
         textvariable=date_from_var,
         date_pattern="yyyy-mm-dd",
-        font=("Segoe UI", 14),
+        font=("Acumin Pro", 14),
         background="white",
         foreground="black",
         borderwidth=1
@@ -1318,7 +1360,7 @@ def create_dashboard_widgets(parent):
     lbl_to = ctk.CTkLabel(
         search_frame,
         text="To:",
-        font=("Segoe UI", 16),   # 16 pt
+        font=("Acumin Pro", 16),   # 16 pt
         text_color="#333"
     )
     lbl_to.grid(row=0, column=4, padx=(8, 2), pady=5, sticky="w")
@@ -1327,7 +1369,7 @@ def create_dashboard_widgets(parent):
         search_frame,
         textvariable=date_to_var,
         date_pattern="yyyy-mm-dd",
-        font=("Segoe UI", 14),
+        font=("Acumin Pro", 14),
         background="white",
         foreground="black",
         borderwidth=1
@@ -1337,7 +1379,7 @@ def create_dashboard_widgets(parent):
         search_frame,
         textvariable=date_from_var,
         date_pattern="yyyy-mm-dd",
-        font=("Segoe UI", 14),
+        font=("Acumin Pro", 14),
         background="white",
         foreground="black",
         borderwidth=1
@@ -1350,7 +1392,7 @@ def create_dashboard_widgets(parent):
         search_frame,
         textvariable=date_to_var,
         date_pattern="yyyy-mm-dd",
-        font=("Segoe UI", 14),
+        font=("Acumin Pro", 14),
         background="white",
         foreground="black",
         borderwidth=1
@@ -1387,7 +1429,7 @@ def create_dashboard_widgets(parent):
     btn_search = ctk.CTkButton(
         search_frame,
         text="Search",
-        font=("Segoe UI", 14, "bold"),
+        font=("Acumin Pro", 14, "bold"),
         fg_color="#2d3e50",    # Button color
         hover_color="#3c4f63",
         command=on_search_button
@@ -1406,7 +1448,7 @@ def create_dashboard_widgets(parent):
     btn_reset = ctk.CTkButton(
         search_frame,
         text="🔄",
-        font=("Segoe UI", 14),
+        font=("Acumin Pro", 14),
         fg_color="#2d3e50",
         hover_color="#3c4f63",
         command=on_reset_button
@@ -1445,7 +1487,7 @@ def create_dashboard_widgets(parent):
         ctk.CTkLabel(
             txn_header_bg,
             text=h,
-            font=("Segoe UI", 16, "bold"),
+            font=("Acumin Pro", 16, "bold"),
             text_color="#555",
             height=40  # set the height here, not in place()
         ).place(
@@ -1484,7 +1526,7 @@ def create_dashboard_widgets(parent):
             ctk.CTkLabel(
                 txn_header_bg,
                 text=h,
-                font=("Segoe UI", 16, "bold"),
+                font=("Acumin Pro", 16, "bold"),
                 text_color="#555",
                 height=40
             ).place(
@@ -1522,7 +1564,7 @@ def create_dashboard_widgets(parent):
             ctk.CTkLabel(
                 empty_frame,
                 text="📭 No transactions found",
-                font=("Segoe UI", 18),
+                font=("Acumin Pro", 18),
                 text_color="#777"
             ).pack(pady=10)
             return
@@ -1564,7 +1606,7 @@ def create_dashboard_widgets(parent):
             ctk.CTkLabel(
                 id_frame,
                 text=f"🆔 #{tid}",
-                font=("Segoe UI", 17, "bold"),
+                font=("Acumin Pro", 17, "bold"),
                 text_color="#4361ee",
                 height=40,  # Fixed height for consistent alignment
                 anchor="w"
@@ -1582,7 +1624,7 @@ def create_dashboard_widgets(parent):
             ctk.CTkLabel(
                 info_frame,
                 text=info_text,
-                font=("Segoe UI", 15),
+                font=("Acumin Pro", 15),
                 text_color="#555",
                 height=40,  # Fixed height for consistent alignment
                 anchor="w"
@@ -1600,7 +1642,7 @@ def create_dashboard_widgets(parent):
             ctk.CTkLabel(
                 amount_frame,
                 text=f"RM{total:.2f}",
-                font=("Segoe UI", 17, "bold"),
+                font=("Acumin Pro", 17, "bold"),
                 text_color="#2a9d8f",
                 height=40,  # Fixed height for consistent alignment
                 anchor="e"
@@ -1619,7 +1661,7 @@ def create_dashboard_widgets(parent):
                     corner_radius=8,
                     fg_color="#4361ee",
                     hover_color="#3a0ca3",
-                    font=("Segoe UI", 13),
+                    font=("Acumin Pro", 13),
                     anchor="center",  # Center text in button
                     command=lambda p=receipt: view_receipt(p)
                 )
@@ -1628,7 +1670,7 @@ def create_dashboard_widgets(parent):
                 receipt_indicator = ctk.CTkLabel(
                     receipt_frame,
                     text="📭 No Receipt",
-                    font=("Segoe UI", 13),
+                    font=("Acumin Pro", 13),
                     text_color="#aaa",
                     height=40,  # Fixed height for consistent alignment
                     anchor="center"
