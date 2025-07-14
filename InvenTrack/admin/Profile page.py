@@ -1,4 +1,3 @@
-import customtkinter as ctk
 import sqlite3
 from PIL import Image
 from tkinter import messagebox
@@ -6,16 +5,19 @@ import re
 import subprocess
 import sys
 import os
+from pathlib import Path
+import json
+import customtkinter as ctk
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
 class ProfilePageDatabase:
-    def __init__(self, db_file="inventoryproject.db"):
+    def __init__(self, db_file = Path(__file__).parent.parent / "inventoryproject.db"):
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
 
-    def get_user_data(self, user_id=1):
+    def get_user_data(self, user_id):  # Removed default value
         try:
             self.cursor.execute("SELECT UserID, Username, Email, Password, Role, PhoneNumber FROM User WHERE UserID = ?", (user_id,))
             return self.cursor.fetchone()
@@ -59,7 +61,7 @@ class ProfilePage(ctk.CTk):
         self.image_refs = []
 
         try:
-            pil_bg = Image.open("Pictures/adminbackground.jpg")
+            pil_bg = Image.open(Path(__file__).parent / "assets/frame0/background.png")
             ctk_bg = ctk.CTkImage(pil_bg, size=(1920, 1080))
             self.image_refs.append(ctk_bg)
             bg_label = ctk.CTkLabel(self, image=ctk_bg, text="")
@@ -67,17 +69,24 @@ class ProfilePage(ctk.CTk):
         except Exception as e:
             print(f"Background load error: {e}")
 
-        self.user_data = self.db.get_user_data(user_id=1)
+        # Get user ID from session
+        self.user_id = self.get_user_id_from_session()
+        if self.user_id is None:
+            messagebox.showerror("Session Error", "Failed to load user session. Please log in again.")
+            self.after(100, self.logout)
+            return
+
+        # Load user data using session ID
+        self.user_data = self.db.get_user_data(self.user_id)
         if self.user_data:
             self.user_id, self.username, self.email, self.password, self.role, self.phone_number = self.user_data
         else:
-            self.user_id = None
+            messagebox.showerror("Error", "User data not found!")
             self.username = "N/A"
             self.email = "N/A"
             self.password = None
             self.role = "N/A"
             self.phone_number = "N/A"
-            print("Warning: No data found for UserID=1. Check if the 'Users' table is populated or exists in inventoryproject.db.")
 
         self.sidebar_expanded = False
         self.sidebar_width = 180
@@ -91,17 +100,28 @@ class ProfilePage(ctk.CTk):
         self.is_editing = False
         self.create_main_profile_frame()
 
+    def get_user_id_from_session(self):
+        """Read user ID from session file"""
+        session_file = Path(__file__).parent.parent / "user_session.json"
+        try:
+            with open(session_file, 'r') as f:
+                data = json.load(f)
+                return data.get("UserID")
+        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+            print(f"Session error: {e}")
+            return None
+
     def _create_header(self):
         self.header_frame = ctk.CTkFrame(self, fg_color="#2d3e50", bg_color="#2d3e50", width=1920, height=55)
         self.header_frame.place(x=0, y=0)
 
-        self.title_label = ctk.CTkLabel(self.header_frame, text=self.current_page, font=("Segoe UI", 25), text_color="#fff")
+        self.title_label = ctk.CTkLabel(self.header_frame, text=self.current_page, font=("Acumin Pro", 25), text_color="#fff")
         self.title_label.place(x=120, y=10)
 
     def _create_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, fg_color="#2d3e50", corner_radius=0, width=self.sidebar_width, height=1080,
                                     border_width=0, border_color="#ddd")
-        ctk.CTkLabel(self.sidebar, text="InvenTrack", font=("Segoe UI", 28, "bold"), text_color="#fff").place(x=20, y=20)
+        ctk.CTkLabel(self.sidebar, text="InvenTrack", font=("Acumin Pro", 28, "bold"), text_color="#fff").place(x=20, y=20)
         self.sidebar_buttons = {}
         y = 80
         for name in ["Profile Page"]:  # Updated to include only Profile Page
@@ -109,18 +129,18 @@ class ProfilePage(ctk.CTk):
             btn = ctk.CTkButton(self.sidebar, text=name, width=160, height=50, corner_radius=10,
                                 fg_color="#34495E" if is_current else "transparent",
                                 hover_color="#3E5870" if is_current else "#4A6374",
-                                text_color="#FFFFFF", font=("Segoe UI", 18.5), command=self.show_profile)
+                                text_color="#FFFFFF", font=("Acumin Pro", 18.5), command=self.show_profile)
             btn.place(x=10, y=y)
             self.sidebar_buttons[name] = btn
             y += 70
         ctk.CTkButton(self.sidebar, text="🔒 Log Out", width=160, height=50, corner_radius=0,
                       fg_color="transparent", hover_color="#f0f8ff", text_color="#fff",
-                      font=("Segoe UI", 18.5), command=self.logout).place(x=10, y=950)
+                      font=("Acumin Pro", 18.5), command=self.logout).place(x=10, y=950)
 
     def _create_toggle_button(self):
         self.toggle_btn = ctk.CTkButton(self, text="☰", width=45, height=45, corner_radius=0,
                                         fg_color="#2d3e50", bg_color="#2d3e50", hover_color="#2d3e50",
-                                        text_color="#fff", font=("Segoe UI", 20), command=self.toggle_sidebar)
+                                        text_color="#fff", font=("Acumin Pro", 20), command=self.toggle_sidebar)
         self.toggle_btn.place(x=12, y=6)
         self.toggle_btn.lift()
 
@@ -128,10 +148,10 @@ class ProfilePage(ctk.CTk):
         btn_size = 35
         self.cart_btn = ctk.CTkButton(self, text="🛒", width=btn_size, height=btn_size, corner_radius=0,
                                       fg_color="#2d3e50", bg_color="#2d3e50", hover_color="#1a252f",
-                                      text_color="#fff", font=("Segoe UI", 20), command=lambda: print("Go to Cart"))
+                                      text_color="#fff", font=("Acumin Pro", 20), command=lambda: print("Go to Cart"))
         self.profile_btn = ctk.CTkButton(self, text="👤", width=btn_size, height=btn_size, corner_radius=0,
                                          fg_color="#2d3e50", bg_color="#2d3e50", hover_color="#1a252f",
-                                         text_color="#fff", font=("Segoe UI", 20))
+                                         text_color="#fff", font=("Acumin Pro", 20))
         self.update_button_positions()
 
     def update_button_positions(self):
@@ -207,7 +227,7 @@ class ProfilePage(ctk.CTk):
         self.profile_frame.place(x=0, y=0)
 
         try:
-            self.profile_picture = ctk.CTkImage(Image.open("Pictures/profile image placeholder.png"), size=(300, 300))
+            self.profile_picture = ctk.CTkImage(Image.open(Path(__file__).parent / "assets/frame0/profile image placeholder.png"), size=(300, 300))
             self.image_refs.append(self.profile_picture)
             self.profile_picture_label = ctk.CTkLabel(master=self.profile_frame, image=self.profile_picture, text="")
             self.profile_picture_label.place(x=50, y=50)
@@ -391,15 +411,65 @@ class ProfilePage(ctk.CTk):
             messagebox.showerror(title="Error", message="Failed to update profile. Please try again.", icon="error")
 
     def logout(self):
-        self.db.close()
-        self.destroy()
-        subprocess.Popen([sys.executable, os.path.join("admin", "login.py")])
+        """Handle logout process"""
+        try:
+            # Clear the user session
+            session_file = Path(__file__).parent.parent / "user_session.json"
+            if session_file.exists():
+                session_file.unlink()
+
+            # Close current window
+            self.destroy()
+
+            # Launch login page
+            current_dir = Path(__file__).parent
+            login_script = current_dir / "login.py"  # Go up one level to find login.py
+
+            if login_script.exists():
+                subprocess.Popen([sys.executable, str(login_script)])
+            else:
+                messagebox.showerror("Error", "Login page not found!")
+        except Exception as e:
+            print(f"Error during logout: {e}")
+            messagebox.showerror("Logout Error", "Failed to logout properly")
 
     def back(self):
-        self.db.close()
-        self.destroy()
-        if self.previous_window:
-            self.previous_window.deiconify()
+        """Read user role from database and open appropriate dashboard"""
+        try:
+            # Get user role from database using the db cursor
+            cursor = self.db.conn.cursor()
+            cursor.execute("SELECT Role FROM User WHERE UserID = ?", (self.user_id,))
+            role = cursor.fetchone()[0]
+            cursor.close()
+
+            # Close current window
+            self.db.close()
+            self.destroy()
+
+            # Determine which dashboard to open based on role
+            current_dir = Path(__file__).parent
+            if role.lower() == "cashier":
+                dashboard_script = current_dir.parent / "cashier/cart.py"
+            elif role.lower() == "admin":
+                dashboard_script = current_dir / "admindashboard.py"
+            elif role.lower() == "manager":
+                dashboard_script = current_dir.parent / "manager/manager.py"
+            else:
+                # Default to login page if role is not recognized
+                messagebox.showwarning("Unknown Role", "Your user role is not recognized. Returning to login page.")
+                dashboard_script = current_dir / "login.py"
+
+            # Launch the appropriate dashboard
+            if dashboard_script.exists():
+                subprocess.Popen([sys.executable, str(dashboard_script)])
+            else:
+                messagebox.showerror("Error", f"{role} dashboard not found!")
+
+        except Exception as e:
+            print(f"Error during back navigation: {e}")
+            messagebox.showerror("Error", "Failed to navigate back properly")
+            # Fallback to login page
+            self.logout()
 
     def __del__(self):
         self.db.close()
