@@ -17,7 +17,7 @@ class LoginForm:
         self.root.configure(bg="#E1E1F0")
 
         self.output_path = Path(__file__).parent
-        self.assets_path = Path(r"C:\Users\InvenTrack-main\InvenTrack\admin\assets\frame0")
+        self.assets_path = Path(Path(__file__).parent / "assets/frame0")
 
         self.password_visible = False
         self.setup_database()
