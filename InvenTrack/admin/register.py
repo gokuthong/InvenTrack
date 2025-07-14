@@ -23,7 +23,7 @@ class RegistrationForm:
 
         # Paths
         self.output_path = Path(__file__).parent
-        self.assets_path = Path(r"C:\Users\InvenTrack-main\InvenTrack\admin\assets\frame0")
+        self.assets_path = Path(Path(__file__).parent / "assets/frame0")
 
         # Flags for show/hide password
         self.password_visible = False
