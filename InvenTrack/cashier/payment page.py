@@ -120,7 +120,7 @@ class PaymentPageDatabase:
 def launch_cashier_window():
     """Launch the manager window if returning fails"""
     try:
-        cashier_script = r"C:\Users\InvenTrack-main\InvenTrack\cashier\cart.py"
+        cashier_script = Path(__file__).parent / "cart.py"
 
         if cashier_script.exists():
             print("Opening cashier window")
@@ -194,7 +194,7 @@ class PaymentPage(ctk.CTk):
 
     def load_cashier_id_from_cart(self):
         try:
-            with open(r"C:\Users\InvenTrack-main\InvenTrack\cashier\cart.json", "r", encoding="utf-8") as f:
+            with open(Path(__file__).parent / "cart.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, dict):
                     user_ids = list(data.keys())
