@@ -1,4 +1,4 @@
-# Sales and Inventory Management System (InvenTrack)
+# Sales and Inventory Management System - InvenTrack
 
 ![InvenTrack Logo](InvenTrack/manager/pictures/logo.png)
 
