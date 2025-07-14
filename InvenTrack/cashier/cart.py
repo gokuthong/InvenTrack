@@ -1,18 +1,33 @@
+import logging
 import sqlite3
 import os
+import subprocess
+from tkinter import messagebox
+
 from PIL import Image
 import customtkinter as ctk
 from customtkinter import CTkImage
 import json
 import tkinter as tk
-from dashboard import create_dashboard_widgets
+from InvenTrack.cashier.dashboard import create_dashboard_widgets
 from flask import Flask, request
 import threading, queue
+from pathlib import Path
+from PIL import ImageTk
 
 # Load current user ID
-with open("user_session.json", "r", encoding="utf-8") as uf:
-    user_data = json.load(uf)
-CURRENT_USER_ID = str(user_data.get("id"))  # make sure it's a string key
+session_path = Path(__file__).resolve().parent.parent / "user_session.json"
+try:
+    if session_path.exists():
+        with open(session_path, "r", encoding="utf-8") as uf:
+            user_data = json.load(uf)
+        CURRENT_USER_ID = str(user_data.get("UserID", ""))
+    else:
+        logging.error(f"Session file not found: {session_path}")
+        CURRENT_USER_ID = ""
+except Exception as e:
+    logging.error(f"Error loading session: {e}")
+    CURRENT_USER_ID = ""
 
 # a thread‐safe queue to shuttle scan codes into Tk
 scan_queue = queue.Queue()
@@ -35,7 +50,7 @@ def run_flask():
 
 # Initialize CustomTkinter appearance
 ctk.set_appearance_mode("light")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme ("blue")
 
 class POSApp(ctk.CTk):
     def __init__(self):
@@ -65,7 +80,7 @@ class POSApp(ctk.CTk):
 
         # Background
         try:
-            pil_bg = Image.open("background.png")
+            pil_bg = Image.open(Path(__file__).parent / "pictures/background.png")
             ctk_bg = CTkImage(pil_bg, size=(1920,1080))
             self.image_refs.append(ctk_bg)
             bg_label = ctk.CTkLabel(self, image=ctk_bg, text="")
@@ -118,7 +133,7 @@ class POSApp(ctk.CTk):
         self.title_label = ctk.CTkLabel(
             self.header_frame,
             text=self.current_page,    # initially “Cashier Terminal”
-            font=("Segoe UI", 25),
+            font=("Acumin Pro", 25),
             text_color="#fff"
         )
         # give about 20px left padding, ~8px top so it’s vertically centered
@@ -150,6 +165,18 @@ class POSApp(ctk.CTk):
         )
         self.dashboard_frame.lower()
 
+        try:
+            logo_img = Image.open(r"C:\Users\InvenTrack-main\InvenTrack\manager\pictures\logo.png")
+            logo_img = logo_img.resize((40, 40))  # Resize as needed
+            # Replace ImageTk.PhotoImage with CTkImage
+            self.logo_ctk_image = CTkImage(logo_img, size=(40, 40))
+            self.image_refs.append(self.logo_ctk_image)  # Add to references
+            self.logo_label = ctk.CTkLabel(self, image=self.logo_ctk_image, text="")
+            self.logo_label.place(x=65, y=5)  # Position left of title
+        except Exception as e:
+            logging.error(f"Failed to load logo: {e}")
+            self.logo_label = None
+
         self._create_left_panel()
         self._create_right_panel()
         self._populate_products()
@@ -157,7 +184,7 @@ class POSApp(ctk.CTk):
         self.show_dashboard()
 
     def _load_products_from_db(self):
-        db_path = "inventoryproject.db"
+        db_path = Path(__file__).parent.parent / "inventoryproject.db"
         if not os.path.exists(db_path):
             ctk.CTkMessageBox(title="Error", message="Database not found.")
             return
@@ -199,9 +226,10 @@ class POSApp(ctk.CTk):
 
         conn.close()
 
+
     def _cart_filepath(self):
         """Return the single cart.json file used to persist all users' carts."""
-        return "cart.json"
+        return r"C:\Users\InvenTrack-main\InvenTrack\cashier\cart.json"
 
     def _load_cart_file(self):
         """Load the saved cart for the current user from cart.json, if it exists."""
@@ -274,7 +302,7 @@ class POSApp(ctk.CTk):
         ctk.CTkLabel(
             self.sidebar,
             text="InvenTrack",
-            font=("Segoe UI", 28, "bold"),
+            font=("Acumin Pro", 28, "bold"),
             text_color="#fff"
         ).place(x=20, y=20)
 
@@ -294,7 +322,7 @@ class POSApp(ctk.CTk):
                 fg_color="#34495E" if is_current else "transparent",
                 hover_color="#3E5870" if is_current else "#4A6374",
                 text_color="#FFFFFF" if is_current else "#FFFFFF",
-                font=("Segoe UI", 18.5),
+                font=("Acumin Pro", 18.5),
                 command=(self.show_dashboard if name == "Dashboard" else self.show_cashier)
             )
             btn.place(x=10, y=y)
@@ -309,11 +337,41 @@ class POSApp(ctk.CTk):
             height=50,
             corner_radius=0,
             fg_color="transparent",
-            hover_color="#f0f8ff",
+            hover_color="lightblue",
             text_color="#fff",
-            font=("Segoe UI", 18.5),
-            command=lambda: print("Logging out...")
+            font=("Acumin Pro", 18.5),
+            command=self.logout
         ).place(x=10, y=logout_y)
+
+    def clear_user_session(self):
+        """Clear the user session data"""
+        session_file = Path(__file__).parent.parent / "user_session.json"
+        try:
+            if session_file.exists():
+                os.remove(session_file)
+        except Exception as e:
+            logging.error(f"Error clearing session: {e}")
+
+    def logout(self):
+        """Handle logout process"""
+        try:
+            # Clear the user session
+            self.clear_user_session()
+
+            # Close current window
+            self.destroy()
+
+            # Launch login page
+            current_dir = Path(__file__).parent.parent  # Go up to parent directory
+            login_script = current_dir / "admin/login.py"  # Assuming login.py is in parent directory
+
+            if login_script.exists():
+                subprocess.Popen(['python', str(login_script)])
+            else:
+                messagebox.showerror("Error", "Login page not found!")
+        except Exception as e:
+            logging.error(f"Error during logout: {e}")
+            messagebox.showerror("Logout Error", "Failed to logout properly")
 
 
 
@@ -321,9 +379,10 @@ class POSApp(ctk.CTk):
         self.toggle_btn = ctk.CTkButton(self, text="☰", width=45, height=45,
                                          corner_radius=0, fg_color="#2d3e50",
                                          hover_color="#2d3e50", text_color="#fff",
-                                         font=("Segoe UI",20), command=self.toggle_sidebar)
+                                         font=("Acumin Pro",20), command=self.toggle_sidebar)
         self.toggle_btn.place(x=12,y=6)
         self.toggle_btn.lift()
+
 
     def show_dashboard(self):
         # 1) Hide the cashier panels
@@ -384,8 +443,8 @@ class POSApp(ctk.CTk):
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI",20),
-            command=lambda: print("Go to Cart")
+            font=("Acumin Pro", 25),
+            command= self.goto_payment
         )
         # Profile button
         self.profile_btn = ctk.CTkButton(
@@ -397,14 +456,14 @@ class POSApp(ctk.CTk):
             fg_color="#2d3e50",
             hover_color="#1a252f",
             text_color="#fff",
-            font=("Segoe UI",20),
-            command=lambda: print("Go to Profile")
+            font=("Acumin Pro", 25),
+            command=self.goto_profile  # Changed to use the new method
         )
         # compute x-offset for right panel
         x_off = self.sidebar_width if self.sidebar_expanded else 0
-        panel_x = 1295 + x_off      # left edge of right panel
-        panel_w = 525               # width of right panel
-        margin = 12                 # margin from edges
+        panel_x = 1295 + x_off  # left edge of right panel
+        panel_w = 525  # width of right panel
+        margin = 12  # margin from edges
 
         # place the profile button flush right
         px = panel_x + panel_w - margin - btn_size
@@ -412,12 +471,51 @@ class POSApp(ctk.CTk):
         # place the cart button just to the left of it
         self.cart_btn.place(x=px - (btn_size + margin), y=margin)
 
+    def goto_profile(self):
+        """Close current window and open Profile page"""
+        try:
+            # Close current window
+            self.destroy()
 
+            # Launch profile page
+            current_dir = Path(__file__).parent.parent
+            profile_script = current_dir / "admin/Profile page.py"
 
+            if profile_script.exists():
+                subprocess.Popen(['python', str(profile_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                messagebox.showerror("Error", "Profile page not found!")
+                app = POSApp()
+                app.mainloop()
 
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open profile: {e}")
+            # Reopen the current app as fallback
+            app = POSApp()
+            app.mainloop()
 
+    def goto_payment(self):
+        """Close current window and open Profile page"""
+        self.destroy()
+        try:
+            # Launch profile page
+            current_dir = Path(__file__).parent
+            profile_script = current_dir / "payment page.py"
 
+            if profile_script.exists():
+                subprocess.Popen(['python', str(profile_script)])
+            else:
+                # Fallback to reopening dashboard if script not found
+                messagebox.showerror("Error", "Profile page not found!")
+                app = POSApp()
+                app.mainloop()
 
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open profile: {e}")
+            # Reopen the current app as fallback
+            app = POSApp()
+            app.mainloop()
 
 
     def _create_left_panel(self):
@@ -434,7 +532,7 @@ class POSApp(ctk.CTk):
             btn=ctk.CTkButton(cat_frame,text=cat,corner_radius=24,
                               fg_color="#2d3e50" if cat==self.selected_category else "transparent",
                               text_color="#fff" if cat==self.selected_category else "#333",
-                              hover_color="#D6DDE5",font=("Segoe UI",19), width=w-10, height=60,
+                              hover_color="#D6DDE5",font=("Acumin Pro",19), width=w-10, height=60,
                               command=lambda c=cat: self.select_category(c))
             btn.place(x=i*w+5,y=0)
             self.cat_buttons.append(btn)
@@ -444,7 +542,7 @@ class POSApp(ctk.CTk):
         self.search_var=ctk.StringVar()
         entry=ctk.CTkEntry(sf, textvariable=self.search_var,
                            placeholder_text="Search by ID or Name...",
-                           width=900, height=50, font=("Segoe UI",20))
+                           width=900, height=50, font=("Acumin Pro",20))
         entry.place(x=20,y=15)
         entry.bind("<KeyRelease>", lambda e: self._populate_products())
         self.filter_var=ctk.StringVar(value="All Items")
@@ -454,7 +552,7 @@ class POSApp(ctk.CTk):
                                       button_color="#2d3e50",  # ← arrow background
                                       button_hover_color="#1a252f",
                                       text_color="#fff", dropdown_fg_color="#2d3e50",
-                                      dropdown_text_color="#fff", font=("Segoe UI",19),
+                                      dropdown_text_color="#fff", font=("Acumin Pro",19),
                                       width=200, height=50, corner_radius=24,
                                       command=self.select_filter)
         filter_menu.place(x=940,y=15)
@@ -471,9 +569,9 @@ class POSApp(ctk.CTk):
         hdr=ctk.CTkFrame(self.right_panel, fg_color="#fff", width=525, height=64)
         hdr.place(x=0,y=0)
         ctk.CTkLabel(hdr,text="Current Order",
-                     font=("Segoe UI",22,"bold"), text_color="#333").place(x=16,y=16)
+                     font=("Acumin Pro",22,"bold"), text_color="#333").place(x=16,y=16)
         ctk.CTkButton(hdr,text="Clear All",width=120,height=36,fg_color="#2d3e50",hover_color="#1a252f",
-                      font=("Segoe UI",18),command=self._clear_cart).place(x=390,y=16)
+                      font=("Acumin Pro",18),command=self._clear_cart).place(x=390,y=16)
         self.cart_scroll=ctk.CTkScrollableFrame(self.right_panel, fg_color="transparent",
                                                  width=525,height=650)
         self.cart_scroll.place(x=0,y=64)
@@ -484,17 +582,17 @@ class POSApp(ctk.CTk):
         self.stock_msg = ctk.CTkLabel(
             ftr,
             text="",
-            font=("Segoe UI", 14),
+            font=("Acumin Pro", 14),
             text_color="#ff6b6b"
         )
         self.stock_msg.place(x=16, y=0)
 
         # adjust totals down a bit
-        self.lbl_sub = ctk.CTkLabel(ftr, text="Subtotal: RM0.00", font=("Segoe UI", 16))
+        self.lbl_sub = ctk.CTkLabel(ftr, text="Subtotal: RM0.00", font=("Acumin Pro", 16))
         self.lbl_sub.place(x=16,y = 35)
-        self.lbl_tax = ctk.CTkLabel(ftr, text="Tax: RM0.00", font=("Segoe UI", 16))
+        self.lbl_tax = ctk.CTkLabel(ftr, text="Tax: RM0.00", font=("Acumin Pro", 16))
         self.lbl_tax.place(x=350, y=35)
-        self.lbl_tot = ctk.CTkLabel(ftr, text="Total: RM0.00", font=("Segoe UI", 16, "bold"))
+        self.lbl_tot = ctk.CTkLabel(ftr, text="Total: RM0.00", font=("Acumin Pro", 16, "bold"))
         self.lbl_tot.place(x=16, y=75)
 
         ctk.CTkButton(
@@ -504,7 +602,7 @@ class POSApp(ctk.CTk):
             height=45,
             fg_color="#2d3e50",
             hover_color="#1a252f",
-            font=("Segoe UI", 18),
+            font=("Acumin Pro", 18),
             command=self._pay
         ).place(x= 12,y=120)
 
@@ -613,24 +711,24 @@ class POSApp(ctk.CTk):
 
             # Product details with larger fonts and left padding
             ctk.CTkLabel(info_f, text=info['name'],
-                         font=("Segoe UI",18,"bold"),
+                         font=("Acumin Pro",18,"bold"),
                          anchor="w").pack(fill="x", padx=12, pady=(8,0))
             ctk.CTkLabel(info_f, text=f"Category: {info['category']}",
-                         font=("Segoe UI",16),
+                         font=("Acumin Pro",16),
                          anchor="w").pack(fill="x", padx=12)
             ctk.CTkLabel(info_f, text=f"Price: RM{info['price']:.2f}",
-                         font=("Segoe UI",16),
+                         font=("Acumin Pro",16),
                          anchor="w").pack(fill="x", padx=12)
             stock_text = f"Low Stock! ({info['quantity']})" if info['quantity'] <= self.low_stock_threshold else f"Stock: {info['quantity']}"
             text_color = "#ff6b6b" if info['quantity'] <= self.low_stock_threshold else "#333"
             ctk.CTkLabel(info_f, text=stock_text,
-                         font=("Segoe UI",16), text_color=text_color,
+                         font=("Acumin Pro",16), text_color=text_color,
                          anchor="w").pack(fill="x", padx=12)
 
             # Add button larger and fully visible aligned bottom-right
             add_btn = ctk.CTkButton(info_f, text="Add",
                                     width=265, height=40,
-                                   font=("Segoe UI",16),fg_color="#2d3e50",hover_color="#1a252f",
+                                   font=("Acumin Pro",16),fg_color="#2d3e50",hover_color="#1a252f",
                                     command=lambda p=pid: self._add_cart(p))
             add_btn.pack(fill="x", pady=20)
 
@@ -658,6 +756,7 @@ class POSApp(ctk.CTk):
         self._refresh_cart()
 
     def _clear_cart(self):
+        messagebox.showinfo(title="Alert", message="Cart has been cleared!")
         self.cart.clear()
         # → Delete the cart file when “Clear All” is pressed
         self._delete_cart_file()
@@ -677,7 +776,7 @@ class POSApp(ctk.CTk):
         lbl = ctk.CTkLabel(
             toast,
             text=f"{emoji} {message}",
-            font=("Segoe UI", 18),
+            font=("Acumin Pro", 18),
             text_color="#333",
             fg_color="white"
         )
@@ -726,7 +825,7 @@ class POSApp(ctk.CTk):
                 ctk.CTkLabel(item, image=info['thumb'], text="").place(x=16, y=10)
 
             # Item name beside thumbnail
-            ctk.CTkLabel(item, text=info['name'], font=("Segoe UI", 18)).place(x=80, y=18)
+            ctk.CTkLabel(item, text=info['name'], font=("Acumin Pro", 18)).place(x=80, y=18)
 
             # quantity controls (grid‐based qf frame)
             qf = ctk.CTkFrame(item, fg_color="transparent", width=140, height=30)
@@ -735,7 +834,7 @@ class POSApp(ctk.CTk):
 
             # Quantity entry
             minus_btn = ctk.CTkButton(
-                qf, text="–", width=24, height=24, font=("Segoe UI", 16),
+                qf, text="–", width=24, height=24, font=("Acumin Pro", 16),
                 fg_color="#2d3e50", hover_color="#1a252f",
                 command=lambda p=pid: self._set_qty(p, self.cart.get(p, 1) - 1)
             )
@@ -744,7 +843,7 @@ class POSApp(ctk.CTk):
             qty_var = ctk.StringVar(value=str(qty))
             entry = ctk.CTkEntry(
                 qf, textvariable=qty_var, width=60, height=28,
-                font=("Segoe UI", 16), justify="center"
+                font=("Acumin Pro", 16), justify="center"
             )
             entry.grid(row=0, column=1)
             entry.bind(
@@ -753,22 +852,22 @@ class POSApp(ctk.CTk):
             )
 
             plus_btn = ctk.CTkButton(
-                qf, text="+", width=24, height=24, font=("Segoe UI", 16),
+                qf, text="+", width=24, height=24, font=("Acumin Pro", 16),
                 fg_color="#2d3e50", hover_color="#1a252f",
                 command=lambda p=pid: self._add_cart(p)
             )
             plus_btn.grid(row=0, column=0, padx=(5, 2))
             # Total price
             ctk.CTkLabel(item, text=f"RM{info['price'] * qty:.2f}",
-                         font=("Segoe UI", 18)).place(x=400, y=20)
+                         font=("Acumin Pro", 18)).place(x=400, y=20)
         # ──────────────────────────────────────────────────────────────────────────
 
         # then your existing tax/total footer logic:
         tax = subtotal * self.tax_rate
         total = subtotal + tax
-        self.lbl_sub.configure(text=f"Subtotal: RM{subtotal:.2f}", font=("Segoe UI", 18))
-        self.lbl_tax.configure(text=f"Tax (6%): RM{tax:.2f}", font=("Segoe UI", 18))
-        self.lbl_tot.configure(text=f"Total: RM{total:.2f}", font=("Segoe UI", 18))
+        self.lbl_sub.configure(text=f"Subtotal: RM{subtotal:.2f}", font=("Acumin Pro", 18))
+        self.lbl_tax.configure(text=f"Tax (6%): RM{tax:.2f}", font=("Acumin Pro", 18))
+        self.lbl_tot.configure(text=f"Total: RM{total:.2f}", font=("Acumin Pro", 18))
 
     def _set_qty(self, pid, new_qty):
         max_qty = self.products[pid]['quantity']
@@ -790,6 +889,7 @@ class POSApp(ctk.CTk):
         self._refresh_cart()
 
     def _pay(self):
+        messagebox.showinfo(title="Alert", message="Products successfully added to cart!")
         print("Payment processed!")
 
     def _check_scans(self):
