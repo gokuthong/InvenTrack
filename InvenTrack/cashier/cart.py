@@ -166,7 +166,7 @@ class POSApp(ctk.CTk):
         self.dashboard_frame.lower()
 
         try:
-            logo_img = Image.open(r"C:\Users\InvenTrack-main\InvenTrack\manager\pictures\logo.png")
+            logo_img = Image.open(Path(__file__).parent.parent / "admin/assets/frame0/logo_header.png")
             logo_img = logo_img.resize((40, 40))  # Resize as needed
             # Replace ImageTk.PhotoImage with CTkImage
             self.logo_ctk_image = CTkImage(logo_img, size=(40, 40))
@@ -229,7 +229,7 @@ class POSApp(ctk.CTk):
 
     def _cart_filepath(self):
         """Return the single cart.json file used to persist all users' carts."""
-        return r"C:\Users\InvenTrack-main\InvenTrack\cashier\cart.json"
+        return Path(__file__).parent / "cart.json"
 
     def _load_cart_file(self):
         """Load the saved cart for the current user from cart.json, if it exists."""
